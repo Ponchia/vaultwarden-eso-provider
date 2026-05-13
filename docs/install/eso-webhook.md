@@ -21,14 +21,14 @@ Choose the provider image reference first. Released OCI charts are published to
 GHCR and default to the matching provider image version. The same packaged
 chart is also attached to the GitHub Release as a `.tgz` fallback. For
 unreleased `main` builds, clone the repository and use
-`./deploy/helm/bitwarden-eso-provider` as the chart reference, omitting
+`./deploy/helm/vaultwarden-eso-provider` as the chart reference, omitting
 `--version`.
 
 Set the release chart reference:
 
 ```bash
 CHART_VERSION=0.1.3
-CHART_REF="oci://ghcr.io/ponchia/charts/bitwarden-eso-provider"
+CHART_REF="oci://ghcr.io/ponchia/charts/vaultwarden-eso-provider"
 ```
 
 Install the webhook for Vaultwarden or single-origin self-hosted Bitwarden:
@@ -63,7 +63,7 @@ For environments that cannot pull OCI charts, use the GitHub Release archive
 instead and omit `--version`:
 
 ```bash
-CHART_REF="https://github.com/ponchia/bitwarden-eso-provider/releases/download/v${CHART_VERSION}/bitwarden-eso-provider-${CHART_VERSION}.tgz"
+CHART_REF="https://github.com/ponchia/vaultwarden-eso-provider/releases/download/v${CHART_VERSION}/vaultwarden-eso-provider-${CHART_VERSION}.tgz"
 ```
 
 `networkPolicy.enabled` is false by default. Enable it only after tailoring the
@@ -128,7 +128,7 @@ metadata:
 spec:
   provider:
     webhook:
-      url: "http://bweso-bitwarden-eso-provider.bweso-system.svc.cluster.local:8080/v1/resolve"
+      url: "http://bweso-vaultwarden-eso-provider.bweso-system.svc.cluster.local:8080/v1/resolve"
       method: POST
       headers:
         Content-Type: application/json

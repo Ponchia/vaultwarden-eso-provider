@@ -1,7 +1,7 @@
 # Helm Chart
 
 The installable chart lives in
-[`bitwarden-eso-provider`](bitwarden-eso-provider).
+[`vaultwarden-eso-provider`](vaultwarden-eso-provider).
 
 The default chart shape is intentionally small:
 
@@ -27,8 +27,8 @@ The default chart shape is intentionally small:
 Render it locally with non-secret lint values:
 
 ```bash
-helm lint deploy/helm/bitwarden-eso-provider -f deploy/helm/lint-values.yaml
-helm template bweso deploy/helm/bitwarden-eso-provider \
+helm lint deploy/helm/vaultwarden-eso-provider -f deploy/helm/lint-values.yaml
+helm template bweso deploy/helm/vaultwarden-eso-provider \
   -f deploy/helm/lint-values.yaml \
   --namespace bweso-system \
   --set-string 'selectorPolicy.allowedKeys[0]=id:00000000-0000-0000-0000-000000000000'

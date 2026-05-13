@@ -18,8 +18,8 @@ use thiserror::Error;
 use url::Url;
 
 pub use api::{
-    BitwardenApiClient, BitwardenApiError, BitwardenCacheConfig, BitwardenCacheMetrics,
-    BitwardenDevice, BitwardenHttpConfig, BitwardenSession, SyncResponse,
+    BitwardenApiClient, BitwardenApiClientOptions, BitwardenApiError, BitwardenCacheConfig,
+    BitwardenCacheMetrics, BitwardenDevice, BitwardenHttpConfig, BitwardenSession, SyncResponse,
 };
 pub use cipher::{
     CipherError, DecryptedCipher, DecryptedField, DecryptedLogin, DecryptedSshKey, EncryptedCipher,
@@ -201,9 +201,10 @@ fn validate_selector_key(key: &str) -> Result<(), BitwardenClientError> {
         .or_else(|| key.strip_prefix("name:"))
     {
         require_non_empty(value, "remote_ref.key")?;
+        return Ok(());
     }
 
-    Ok(())
+    Err(BitwardenClientError::UnprefixedSelectorKey)
 }
 
 /// Provider boundary used by Kubernetes-facing adapters.
@@ -258,6 +259,9 @@ pub enum BitwardenClientError {
     /// resolve safely yet.
     #[error("remote_ref.version is not supported by this provider")]
     UnsupportedVersionSelector,
+    /// Selector key did not start with an explicit `id:` or `name:` prefix.
+    #[error("remote_ref.key must start with 'id:' or 'name:'")]
+    UnprefixedSelectorKey,
 }
 
 #[cfg(test)]
@@ -346,7 +350,7 @@ mod tests {
     #[test]
     fn selector_rejects_empty_properties() {
         let Err(err) = BitwardenSelector::try_from(RemoteRef {
-            key: "app/database".to_string(),
+            key: "name:app/database".to_string(),
             property: Some(" ".to_string()),
             version: None,
         }) else {
@@ -354,6 +358,19 @@ mod tests {
         };
 
         assert!(matches!(err, BitwardenClientError::Validation(_)));
+    }
+
+    #[test]
+    fn selector_rejects_unprefixed_key() {
+        let Err(err) = BitwardenSelector::try_from(RemoteRef {
+            key: "app/database".to_string(),
+            property: None,
+            version: None,
+        }) else {
+            unreachable!("unprefixed key should fail validation");
+        };
+
+        assert!(matches!(err, BitwardenClientError::UnprefixedSelectorKey));
     }
 
     #[test]
@@ -372,7 +389,7 @@ mod tests {
     #[test]
     fn selector_rejects_unsupported_versions() {
         let Err(err) = BitwardenSelector::try_from(RemoteRef {
-            key: "app/database".to_string(),
+            key: "name:app/database".to_string(),
             property: Some("DATABASE_URL".to_string()),
             version: Some("42".to_string()),
         }) else {
@@ -388,12 +405,12 @@ mod tests {
     #[test]
     fn selector_normalizes_property_whitespace() -> Result<(), Box<dyn std::error::Error>> {
         let selector = BitwardenSelector::try_from(RemoteRef {
-            key: " app/database ".to_string(),
+            key: " name:app/database ".to_string(),
             property: Some(" DATABASE_URL ".to_string()),
             version: None,
         })?;
 
-        assert_eq!(selector.key, "app/database");
+        assert_eq!(selector.key, "name:app/database");
         assert_eq!(selector.property.as_deref(), Some("DATABASE_URL"));
         Ok(())
     }

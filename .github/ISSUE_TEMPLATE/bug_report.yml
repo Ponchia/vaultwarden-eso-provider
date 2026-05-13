@@ -31,7 +31,7 @@ body:
     id: version
     attributes:
       label: Provider version or image digest
-      placeholder: ghcr.io/owner/bitwarden-eso-provider@sha256:...
+      placeholder: ghcr.io/owner/vaultwarden-eso-provider@sha256:...
     validations:
       required: true
   - type: input

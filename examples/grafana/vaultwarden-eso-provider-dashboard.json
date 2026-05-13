@@ -440,8 +440,8 @@
   },
   "timepicker": {},
   "timezone": "browser",
-  "title": "Bitwarden ESO Provider",
-  "uid": "bitwarden-eso-provider",
+  "title": "Vaultwarden ESO Provider",
+  "uid": "vaultwarden-eso-provider",
   "version": 1,
   "weekStart": ""
 }

@@ -1,13 +1,18 @@
 # Release Readiness Plan
 
-This file records the release-readiness decisions for Bitwarden ESO Provider.
+This file records the release-readiness decisions for Vaultwarden ESO Provider.
 `v0.1.3` is public, so this document now describes the current baseline and the
 rules for future releases.
 
 ## Product Shape
 
-The first public release remains an External Secrets Operator webhook provider
-for Bitwarden Password Manager and Vaultwarden vault items.
+The project is an External Secrets Operator webhook provider for
+**Vaultwarden** (and self-hosted Bitwarden Password Manager), with Bitwarden
+Cloud Password Manager as a secondary supported target. Bitwarden Secrets
+Manager is out of scope and is not implemented by Vaultwarden in any case.
+The repository will be renamed to `vaultwarden-eso-provider` at `v0.2` (see
+[roadmap.md](roadmap.md)); `v0.1.x` artifacts are being removed as part of
+that rename and are not preserved for compatibility.
 
 Do not build a native Kubernetes operator during the `v0.1.x` release line. ESO
 already owns refresh intervals, target `Secret` lifecycle, deletion behavior,
@@ -17,13 +22,13 @@ items.
 
 ## Required For Public Releases
 
-- Keep the repository name `bitwarden-eso-provider`, but consistently describe
-  the project as a Bitwarden Password Manager / Vaultwarden vault-item ESO
-  provider.
-- Support explicit `id:<item-id>` and `name:<item-name>` selectors. Recommend
-  `id:` selectors in production.
-- Keep bare selector lookup only as pre-release compatibility: item ID first,
-  then decrypted item name.
+- Repository, binary crate, container image, and Helm chart are named
+  `vaultwarden-eso-provider`. Project framing leads with Vaultwarden and
+  self-hosted Bitwarden Password Manager; Bitwarden Cloud Password Manager
+  is a secondary supported target.
+- Require explicit `id:<item-id>` or `name:<item-name>` selectors. Bare
+  unprefixed keys are rejected with `400 validation`. Recommend `id:` in
+  production.
 - Enforce optional provider-side selector policy with exact raw keys and raw key
   prefixes. Empty policy allows all keys visible to the configured account;
   configured policy denies every non-matching key with a redacted `403`.

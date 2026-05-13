@@ -12,16 +12,16 @@ RUN apk add --no-cache musl-dev
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
     --mount=type=cache,target=/workspace/target \
-    cargo build --locked --release -p bitwarden-eso-provider \
-    && cp /workspace/target/release/bitwarden-eso-provider /usr/local/bin/bitwarden-eso-provider
+    cargo build --locked --release -p vaultwarden-eso-provider \
+    && cp /workspace/target/release/vaultwarden-eso-provider /usr/local/bin/vaultwarden-eso-provider
 
 FROM scratch AS runtime
 
-COPY --from=builder /usr/local/bin/bitwarden-eso-provider /usr/local/bin/bitwarden-eso-provider
+COPY --from=builder /usr/local/bin/vaultwarden-eso-provider /usr/local/bin/vaultwarden-eso-provider
 
 USER 65532:65532
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
-    CMD ["/usr/local/bin/bitwarden-eso-provider", "--healthcheck-url", "http://127.0.0.1:8080/livez"]
+    CMD ["/usr/local/bin/vaultwarden-eso-provider", "--healthcheck-url", "http://127.0.0.1:8080/livez"]
 
-ENTRYPOINT ["/usr/local/bin/bitwarden-eso-provider"]
+ENTRYPOINT ["/usr/local/bin/vaultwarden-eso-provider"]

@@ -29,8 +29,8 @@ Provider.
   additional permissions explicitly.
 - Package visibility: the release image and OCI Helm chart packages must be
   public so Kubernetes clusters can pull
-  `ghcr.io/ponchia/bitwarden-eso-provider:<version>` and
-  `oci://ghcr.io/ponchia/charts/bitwarden-eso-provider` without registry
+  `ghcr.io/ponchia/vaultwarden-eso-provider:<version>` and
+  `oci://ghcr.io/ponchia/charts/vaultwarden-eso-provider` without registry
   credentials.
 
 ## Main Branch Protection

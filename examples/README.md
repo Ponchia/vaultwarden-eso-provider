@@ -3,9 +3,9 @@
 This directory contains optional observability examples that are not installed
 by the Helm chart.
 
-- `grafana/bitwarden-eso-provider-dashboard.json`: importable Grafana dashboard
+- `grafana/vaultwarden-eso-provider-dashboard.json`: importable Grafana dashboard
   for the provider's redacted Prometheus metrics.
-- `prometheus/bitwarden-eso-provider-rules.yaml`: Prometheus Operator
+- `prometheus/vaultwarden-eso-provider-rules.yaml`: Prometheus Operator
   `PrometheusRule` starting point for readiness, error-rate, cache, and latency
   alerts.
 

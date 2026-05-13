@@ -1,14 +1,19 @@
 # Compatibility
 
-This project targets the Bitwarden Password Manager vault protocol implemented
-by Vaultwarden and Bitwarden. It does not target Bitwarden Secrets Manager
-(`bws`) APIs.
+This project targets the Bitwarden Password Manager vault protocol. The
+primary target is **Vaultwarden** (and self-hosted Bitwarden Password Manager
+exposed through a single origin); **Bitwarden Cloud Password Manager** is a
+supported second target through the split-endpoint mode. Bitwarden Secrets
+Manager (`bws`) is not in scope and is not implemented by Vaultwarden in any
+case.
 
 ## Endpoint Modes
 
 Two endpoint layouts are supported.
 
-Single-origin servers use one URL and derive the API roots from it:
+Single-origin servers use one URL and derive the API roots from it. This is
+the Vaultwarden layout and also matches self-hosted Bitwarden when exposed
+through one origin:
 
 ```bash
 BWESO_SINGLE_ORIGIN_URL="https://vaultwarden.example.com"
@@ -19,10 +24,8 @@ Requests are built as:
 - Identity: `https://vaultwarden.example.com/identity/...`
 - API: `https://vaultwarden.example.com/api/...`
 
-This is the normal Vaultwarden layout and also matches self-hosted Bitwarden
-when exposed through one origin.
-
-Split endpoint servers use explicit identity and API URLs:
+Split endpoint servers use explicit identity and API URLs. This is the
+Bitwarden Cloud layout:
 
 ```bash
 BWESO_IDENTITY_URL="https://identity.bitwarden.com"
@@ -58,18 +61,20 @@ The live smoke test can be aimed at either layout:
 - `BWESO_TEST_IDENTITY_URL` plus `BWESO_TEST_API_URL` for Bitwarden Cloud or
   explicit split deployments.
 
-Live verification status:
+Live verification status. These are smoke tests run by the maintainer on a
+personal k3s cluster on the dates listed; treat them as "the release path
+worked end-to-end on this date," not as production soak time:
 
-- Vaultwarden single-origin: verified against the exact `v0.1.3` OCI release
-  chart and image on a real k3s cluster on 2026-05-11, including selector
-  policy, single-field and whole-item sync, target Secret recreation, webhook
-  restart, negative cases, and redacted metrics.
-- Bitwarden Cloud US split endpoints: verified against a dedicated live account
-  and the exact `v0.1.1` release chart and image on a real k3s cluster on
-  2026-05-11, including selector policy, single-field and whole-item sync,
-  target Secret recreation, webhook restart, negative cases, and redacted
-  metrics. `v0.1.3` keeps the same split-endpoint provider protocol
-  implementation covered by fake-server tests.
+- Vaultwarden single-origin: smoke-tested against the exact `v0.1.3` OCI
+  release chart and image on a real k3s cluster on 2026-05-11, including
+  selector policy, single-field and whole-item sync, target Secret recreation,
+  webhook restart, negative cases, and redacted metrics.
+- Bitwarden Cloud US split endpoints: smoke-tested against a dedicated live
+  account and the exact `v0.1.1` release chart and image on a real k3s
+  cluster on 2026-05-11, including selector policy, single-field and
+  whole-item sync, target Secret recreation, webhook restart, negative cases,
+  and redacted metrics. `v0.1.3` keeps the same split-endpoint provider
+  protocol implementation covered by fake-server tests.
 
 The latest Vaultwarden live verification environment used:
 
@@ -89,17 +94,21 @@ Implemented:
 - Individual vault item sync against single-origin and split endpoint layouts.
 - Single-field ESO sync through `remoteRef` and whole-item ESO sync through
   `dataFrom.extract`.
-- `id:<item-id>` and `name:<item-name>` selectors. Bare selectors currently try
-  ID first and then decrypted item name for pre-release compatibility.
+- `id:<item-id>` and `name:<item-name>` selectors. Explicit prefix required;
+  unprefixed bare keys are rejected with `400 validation`.
 - Provider-side selector policy based on exact raw keys and raw key prefixes.
   This policy gates item keys, not individual item properties.
 
 Not yet implemented:
 
 - Bitwarden Secrets Manager (`bws`) machine-account/project secret APIs.
+  Out of scope by design; not implemented by Vaultwarden in any case.
 - Shared organization item decryption that requires organization key handling.
   Selected shared items fail explicitly instead of silently returning partial
-  results.
+  results. For many teams this is the largest gap — pure-personal vaults or
+  dedicated per-user-key deployments are the realistic `v0.1.x` use cases.
+- Custom CA bundle support for Vaultwarden installs on a private CA. TLS
+  verification uses the system trust store only.
 - Attachment metadata lookup, download, decryption, and mapping. Properties
   beginning with `attachment.` or `attachments.` fail explicitly.
 - Interactive two-factor or new-device challenge handling for API-key login.

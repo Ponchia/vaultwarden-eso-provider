@@ -1,13 +1,13 @@
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
-  name: bitwarden-eso-provider
+  name: vaultwarden-eso-provider
   labels:
-    app.kubernetes.io/name: bitwarden-eso-provider
+    app.kubernetes.io/name: vaultwarden-eso-provider
     app.kubernetes.io/component: observability
 spec:
   groups:
-    - name: bitwarden-eso-provider
+    - name: vaultwarden-eso-provider
       rules:
         - alert: BitwardenEsoProviderNotReady
           expr: bweso_ready == 0
@@ -15,7 +15,7 @@ spec:
           labels:
             severity: warning
           annotations:
-            summary: Bitwarden ESO Provider is not ready
+            summary: Vaultwarden ESO Provider is not ready
             description: The provider readiness probe has reported not-ready for at least 5 minutes.
         - alert: BitwardenEsoResolveErrors
           expr: sum(rate(bweso_resolve_requests_total{outcome="error"}[5m])) > 0
@@ -23,7 +23,7 @@ spec:
           labels:
             severity: warning
           annotations:
-            summary: Bitwarden ESO Provider has resolve errors
+            summary: Vaultwarden ESO Provider has resolve errors
             description: Secret resolution requests are failing. Inspect ESO ExternalSecret status and provider logs; metrics intentionally omit selector details.
         - alert: BitwardenEsoCacheRefreshFailures
           expr: sum(rate(bweso_cache_refreshes_total{outcome="failure"}[5m])) > 0
@@ -31,7 +31,7 @@ spec:
           labels:
             severity: warning
           annotations:
-            summary: Bitwarden ESO Provider cache refresh is failing
+            summary: Vaultwarden ESO Provider cache refresh is failing
             description: Full vault sync refresh attempts are failing. Check Bitwarden/Vaultwarden reachability and credentials.
         - alert: BitwardenEsoCacheStale
           expr: bweso_cache_last_success_age_seconds > 600
@@ -39,7 +39,7 @@ spec:
           labels:
             severity: warning
           annotations:
-            summary: Bitwarden ESO Provider cache has not refreshed recently
+            summary: Vaultwarden ESO Provider cache has not refreshed recently
             description: The last successful cache refresh is older than 10 minutes. Tune this threshold to the configured cache TTL and expected refresh cadence.
         - alert: BitwardenEsoResolveLatencyHigh
           expr: histogram_quantile(0.95, sum(rate(bweso_resolve_duration_seconds_bucket[5m])) by (le)) > 5
@@ -47,5 +47,5 @@ spec:
           labels:
             severity: warning
           annotations:
-            summary: Bitwarden ESO Provider resolve latency is high
+            summary: Vaultwarden ESO Provider resolve latency is high
             description: P95 resolve latency has exceeded 5 seconds for at least 10 minutes.

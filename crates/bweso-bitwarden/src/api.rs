@@ -43,127 +43,33 @@ pub struct BitwardenApiClient {
 }
 
 impl BitwardenApiClient {
-    /// Build an API client for a single-origin Vaultwarden or self-hosted
-    /// Bitwarden server with the default HTTP client and device identity.
+    /// Build an API client from a fully-populated options struct.
+    ///
+    /// Use [`BitwardenApiClientOptions::single_origin`] for Vaultwarden /
+    /// self-hosted Bitwarden, or [`BitwardenApiClientOptions::split`] for
+    /// Bitwarden Cloud and other split identity/API deployments.
     ///
     /// # Errors
     ///
     /// Returns an error if the HTTP client cannot be constructed.
-    pub fn new(
-        endpoint: BitwardenEndpoint,
-        auth: BitwardenAuth,
-    ) -> Result<Self, BitwardenApiError> {
-        Self::with_device(endpoint, auth, BitwardenDevice::default())
-    }
-
-    /// Build an API client for a single-origin Vaultwarden or self-hosted
-    /// Bitwarden server with an explicit device identity.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the HTTP client cannot be constructed.
-    pub fn with_device(
-        endpoint: BitwardenEndpoint,
-        auth: BitwardenAuth,
-        device: BitwardenDevice,
-    ) -> Result<Self, BitwardenApiError> {
-        Self::with_device_and_cache(endpoint, auth, device, BitwardenCacheConfig::default())
-    }
-
-    /// Build an API client for a single-origin Vaultwarden or self-hosted
-    /// Bitwarden server with explicit device identity and cache settings.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the HTTP client cannot be constructed.
-    pub fn with_device_and_cache(
-        endpoint: BitwardenEndpoint,
-        auth: BitwardenAuth,
-        device: BitwardenDevice,
-        cache_config: BitwardenCacheConfig,
-    ) -> Result<Self, BitwardenApiError> {
-        Self::with_endpoints_device_and_cache(
-            BitwardenEndpoints::from_single_origin(endpoint),
-            auth,
-            device,
-            cache_config,
-        )
-    }
-
-    /// Build an API client from explicit identity and API endpoint bases.
-    ///
-    /// This mode is required for Bitwarden Cloud, where identity and API
-    /// endpoints live on separate hosts.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the HTTP client cannot be constructed.
-    pub fn with_endpoints(
-        endpoints: BitwardenEndpoints,
-        auth: BitwardenAuth,
-    ) -> Result<Self, BitwardenApiError> {
-        Self::with_endpoints_and_device(endpoints, auth, BitwardenDevice::default())
-    }
-
-    /// Build an API client from explicit identity and API endpoint bases with
-    /// an explicit device identity.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the HTTP client cannot be constructed.
-    pub fn with_endpoints_and_device(
-        endpoints: BitwardenEndpoints,
-        auth: BitwardenAuth,
-        device: BitwardenDevice,
-    ) -> Result<Self, BitwardenApiError> {
-        Self::with_endpoints_device_and_cache(
-            endpoints,
-            auth,
-            device,
-            BitwardenCacheConfig::default(),
-        )
-    }
-
-    /// Build an API client from explicit identity and API endpoint bases with
-    /// explicit device identity and cache settings.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the HTTP client cannot be constructed.
-    pub fn with_endpoints_device_and_cache(
-        endpoints: BitwardenEndpoints,
-        auth: BitwardenAuth,
-        device: BitwardenDevice,
-        cache_config: BitwardenCacheConfig,
-    ) -> Result<Self, BitwardenApiError> {
-        Self::with_endpoints_device_cache_and_http_config(
+    pub fn with_options(options: BitwardenApiClientOptions) -> Result<Self, BitwardenApiError> {
+        let BitwardenApiClientOptions {
             endpoints,
             auth,
             device,
             cache_config,
-            BitwardenHttpConfig::default(),
-        )
-    }
+            http_config,
+        } = options;
 
-    /// Build an API client from explicit endpoints, device identity, cache
-    /// settings, and HTTP timeout settings.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the HTTP client cannot be constructed.
-    pub fn with_endpoints_device_cache_and_http_config(
-        endpoints: BitwardenEndpoints,
-        auth: BitwardenAuth,
-        device: BitwardenDevice,
-        cache_config: BitwardenCacheConfig,
-        http_config: BitwardenHttpConfig,
-    ) -> Result<Self, BitwardenApiError> {
-        let http = HttpClient::builder()
-            .user_agent("bitwarden-eso-provider")
+        let mut builder = HttpClient::builder()
+            .user_agent("vaultwarden-eso-provider")
             .connect_timeout(http_config.connect_timeout)
             .timeout(http_config.request_timeout)
-            .redirect(reqwest::redirect::Policy::none())
-            .build()?;
+            .redirect(reqwest::redirect::Policy::none());
+        for certificate in http_config.extra_root_certificates {
+            builder = builder.add_root_certificate(certificate);
+        }
+        let http = builder.build()?;
 
         Ok(Self {
             endpoints,
@@ -359,18 +265,9 @@ impl BitwardenApiClient {
         user_key: &AuthenticatedSymmetricKey,
         key: &str,
     ) -> Result<DecryptedCipher, BitwardenClientError> {
-        match CipherLookup::from_key(key) {
+        match CipherLookup::from_key(key)? {
             CipherLookup::Id(id) => Self::resolve_synced_cipher_by_id(sync, user_key, id),
             CipherLookup::Name(name) => Self::resolve_synced_cipher_by_name(sync, user_key, name),
-            CipherLookup::IdThenName => {
-                match Self::resolve_synced_cipher_by_id(sync, user_key, key) {
-                    Ok(cipher) => Ok(cipher),
-                    Err(BitwardenClientError::Api(BitwardenApiError::CipherNotFound)) => {
-                        Self::resolve_synced_cipher_by_name(sync, user_key, key)
-                    }
-                    Err(error) => Err(error),
-                }
-            }
         }
     }
 
@@ -456,18 +353,82 @@ impl BitwardenProvider for BitwardenApiClient {
 enum CipherLookup<'a> {
     Id(&'a str),
     Name(&'a str),
-    IdThenName,
 }
 
 impl<'a> CipherLookup<'a> {
-    fn from_key(key: &'a str) -> Self {
+    fn from_key(key: &'a str) -> Result<Self, BitwardenClientError> {
         if let Some(id) = key.strip_prefix("id:") {
-            return Self::Id(id);
+            return Ok(Self::Id(id));
         }
         if let Some(name) = key.strip_prefix("name:") {
-            return Self::Name(name);
+            return Ok(Self::Name(name));
         }
-        Self::IdThenName
+        Err(BitwardenClientError::UnprefixedSelectorKey)
+    }
+}
+
+/// Construction options for [`BitwardenApiClient`].
+///
+/// Build the struct directly or via the [`BitwardenApiClientOptions::single_origin`]
+/// and [`BitwardenApiClientOptions::split`] helpers, then hand it to
+/// [`BitwardenApiClient::with_options`].
+pub struct BitwardenApiClientOptions {
+    /// Identity and API endpoint bases.
+    pub endpoints: BitwardenEndpoints,
+    /// User API-key credentials and master password.
+    pub auth: BitwardenAuth,
+    /// Stable device identity sent during API-key login.
+    pub device: BitwardenDevice,
+    /// Vault sync cache settings.
+    pub cache_config: BitwardenCacheConfig,
+    /// HTTP transport timeouts.
+    pub http_config: BitwardenHttpConfig,
+}
+
+impl BitwardenApiClientOptions {
+    /// Options for a single-origin Vaultwarden or self-hosted Bitwarden server.
+    #[must_use]
+    pub fn single_origin(endpoint: BitwardenEndpoint, auth: BitwardenAuth) -> Self {
+        Self {
+            endpoints: BitwardenEndpoints::from_single_origin(endpoint),
+            auth,
+            device: BitwardenDevice::default(),
+            cache_config: BitwardenCacheConfig::default(),
+            http_config: BitwardenHttpConfig::default(),
+        }
+    }
+
+    /// Options for split identity / API endpoints (Bitwarden Cloud).
+    #[must_use]
+    pub fn split(endpoints: BitwardenEndpoints, auth: BitwardenAuth) -> Self {
+        Self {
+            endpoints,
+            auth,
+            device: BitwardenDevice::default(),
+            cache_config: BitwardenCacheConfig::default(),
+            http_config: BitwardenHttpConfig::default(),
+        }
+    }
+
+    /// Override the device identity.
+    #[must_use]
+    pub fn with_device(mut self, device: BitwardenDevice) -> Self {
+        self.device = device;
+        self
+    }
+
+    /// Override the sync cache config.
+    #[must_use]
+    pub fn with_cache_config(mut self, cache_config: BitwardenCacheConfig) -> Self {
+        self.cache_config = cache_config;
+        self
+    }
+
+    /// Override the HTTP transport config.
+    #[must_use]
+    pub fn with_http_config(mut self, http_config: BitwardenHttpConfig) -> Self {
+        self.http_config = http_config;
+        self
     }
 }
 
@@ -503,21 +464,33 @@ impl Default for BitwardenCacheConfig {
     }
 }
 
-/// HTTP timeout settings for the Bitwarden-compatible API client.
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+/// HTTP transport settings for the Bitwarden-compatible API client.
+#[derive(Debug, Clone)]
 pub struct BitwardenHttpConfig {
     connect_timeout: Duration,
     request_timeout: Duration,
+    extra_root_certificates: Vec<reqwest::Certificate>,
 }
 
 impl BitwardenHttpConfig {
     /// Build HTTP settings with explicit connect and whole-request timeouts.
     #[must_use]
-    pub const fn new(connect_timeout: Duration, request_timeout: Duration) -> Self {
+    pub fn new(connect_timeout: Duration, request_timeout: Duration) -> Self {
         Self {
             connect_timeout,
             request_timeout,
+            extra_root_certificates: Vec::new(),
         }
+    }
+
+    /// Add additional root certificates to the HTTP client's trust store.
+    ///
+    /// Certificates supplement, not replace, the system trust store. Use this
+    /// for Vaultwarden installs on a private CA.
+    #[must_use]
+    pub fn with_extra_root_certificates(mut self, certificates: Vec<reqwest::Certificate>) -> Self {
+        self.extra_root_certificates = certificates;
+        self
     }
 }
 
@@ -526,6 +499,7 @@ impl Default for BitwardenHttpConfig {
         Self {
             connect_timeout: DEFAULT_HTTP_CONNECT_TIMEOUT,
             request_timeout: DEFAULT_HTTP_REQUEST_TIMEOUT,
+            extra_root_certificates: Vec::new(),
         }
     }
 }
@@ -1058,7 +1032,7 @@ mod tests {
         let (client, counters) =
             fake_split_client_with_cache(BitwardenCacheConfig::default()).await?;
         let selector = BitwardenSelector::try_from(RemoteRef {
-            key: "app/database".to_string(),
+            key: "name:app/database".to_string(),
             property: Some("DATABASE_URL".to_string()),
             version: None,
         })?;
@@ -1132,7 +1106,7 @@ mod tests {
     async fn resolves_cipher_property_through_api_key_login_and_sync() -> TestResult {
         let client = fake_client().await?;
         let selector = BitwardenSelector::try_from(RemoteRef {
-            key: "app/database".to_string(),
+            key: "name:app/database".to_string(),
             property: Some("DATABASE_URL".to_string()),
             version: None,
         })?;
@@ -1154,7 +1128,7 @@ mod tests {
     async fn resolves_whole_cipher_to_secret_document() -> TestResult {
         let client = fake_client().await?;
         let selector = BitwardenSelector::try_from(RemoteRef {
-            key: "cipher-login".to_string(),
+            key: "id:cipher-login".to_string(),
             property: None,
             version: None,
         })?;
@@ -1203,7 +1177,7 @@ mod tests {
         };
 
         let Err(error) =
-            BitwardenApiClient::resolve_synced_cipher(&sync, &user_key, "app/database")
+            BitwardenApiClient::resolve_synced_cipher(&sync, &user_key, "name:app/database")
         else {
             unreachable!("duplicate item names should be ambiguous");
         };
@@ -1323,7 +1297,7 @@ mod tests {
         let (client, counters) =
             fake_client_with_cache(BitwardenCacheConfig::new(Duration::from_secs(60))).await?;
         let selector = BitwardenSelector::try_from(RemoteRef {
-            key: "app/database".to_string(),
+            key: "name:app/database".to_string(),
             property: Some("DATABASE_URL".to_string()),
             version: None,
         })?;
@@ -1341,7 +1315,7 @@ mod tests {
         let (client, counters) =
             fake_client_with_cache(BitwardenCacheConfig::new(Duration::from_secs(60))).await?;
         let selector = BitwardenSelector::try_from(RemoteRef {
-            key: "app/database".to_string(),
+            key: "name:app/database".to_string(),
             property: Some("DATABASE_URL".to_string()),
             version: None,
         })?;
@@ -1386,7 +1360,7 @@ mod tests {
     async fn disabled_cache_refreshes_every_resolve() -> TestResult {
         let (client, counters) = fake_client_with_cache(BitwardenCacheConfig::disabled()).await?;
         let selector = BitwardenSelector::try_from(RemoteRef {
-            key: "app/database".to_string(),
+            key: "name:app/database".to_string(),
             property: Some("DATABASE_URL".to_string()),
             version: None,
         })?;
@@ -1404,7 +1378,7 @@ mod tests {
         let (client, counters) =
             fake_client_with_cache(BitwardenCacheConfig::new(Duration::from_millis(10))).await?;
         let selector = BitwardenSelector::try_from(RemoteRef {
-            key: "app/database".to_string(),
+            key: "name:app/database".to_string(),
             property: Some("DATABASE_URL".to_string()),
             version: None,
         })?;
@@ -1423,7 +1397,7 @@ mod tests {
         let (client, counters) =
             fake_client_with_cache(BitwardenCacheConfig::new(Duration::from_secs(60))).await?;
         let selector = BitwardenSelector::try_from(RemoteRef {
-            key: "app/database".to_string(),
+            key: "name:app/database".to_string(),
             property: Some("DATABASE_URL".to_string()),
             version: None,
         })?;
@@ -1470,11 +1444,9 @@ mod tests {
             master_password: PASSWORD.into(),
         };
 
-        let client = BitwardenApiClient::with_device_and_cache(
-            endpoint,
-            auth,
-            BitwardenDevice::default(),
-            cache_config,
+        let client = BitwardenApiClient::with_options(
+            BitwardenApiClientOptions::single_origin(endpoint, auth)
+                .with_cache_config(cache_config),
         )?;
 
         Ok((client, counters))
@@ -1491,11 +1463,8 @@ mod tests {
             master_password: PASSWORD.into(),
         };
 
-        let client = BitwardenApiClient::with_endpoints_device_and_cache(
-            endpoints,
-            auth,
-            BitwardenDevice::default(),
-            cache_config,
+        let client = BitwardenApiClient::with_options(
+            BitwardenApiClientOptions::split(endpoints, auth).with_cache_config(cache_config),
         )?;
 
         Ok((client, counters))

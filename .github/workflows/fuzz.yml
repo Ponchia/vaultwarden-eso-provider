@@ -1,0 +1,50 @@
+name: Fuzz
+
+on:
+  workflow_dispatch:
+    inputs:
+      duration_seconds:
+        description: "Per-target fuzz duration in seconds"
+        required: true
+        default: "300"
+  schedule:
+    # Weekly fuzz run, off-peak
+    - cron: "37 4 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  encrypted-string:
+    name: encrypted_string_from_str
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install nightly toolchain
+        uses: dtolnay/rust-toolchain@nightly
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates/bweso-bitwarden/fuzz -> target
+
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --locked --version 0.13.1
+
+      - name: Run fuzz target
+        run: |
+          duration="${{ github.event.inputs.duration_seconds || '300' }}"
+          cd crates/bweso-bitwarden/fuzz
+          cargo +nightly fuzz run encrypted_string_from_str \
+            -- -max_total_time="$duration" -timeout=10
+
+      - name: Upload crash artifacts
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fuzz-crashes-encrypted-string
+          path: crates/bweso-bitwarden/fuzz/artifacts/
+          if-no-files-found: ignore

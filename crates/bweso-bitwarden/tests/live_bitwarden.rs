@@ -1,8 +1,8 @@
 use std::{env, fs, time::Duration};
 
 use bweso_bitwarden::{
-    BitwardenApiClient, BitwardenAuth, BitwardenCacheConfig, BitwardenDevice, BitwardenEndpoint,
-    BitwardenEndpoints, BitwardenProvider, BitwardenSelector,
+    BitwardenApiClient, BitwardenApiClientOptions, BitwardenAuth, BitwardenCacheConfig,
+    BitwardenEndpoint, BitwardenEndpoints, BitwardenProvider, BitwardenSelector,
 };
 use bweso_core::SecretDocument;
 
@@ -26,11 +26,9 @@ async fn resolves_configured_live_bitwarden_compatible_secret() -> TestResult {
         client_secret: config.client_secret.into(),
         master_password: config.master_password.into(),
     };
-    let client = BitwardenApiClient::with_endpoints_device_and_cache(
-        endpoints,
-        auth,
-        BitwardenDevice::default(),
-        BitwardenCacheConfig::new(Duration::from_secs(1)),
+    let client = BitwardenApiClient::with_options(
+        BitwardenApiClientOptions::split(endpoints, auth)
+            .with_cache_config(BitwardenCacheConfig::new(Duration::from_secs(1))),
     )?;
 
     let selector = match config.selector {

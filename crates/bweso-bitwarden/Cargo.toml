@@ -1,11 +1,11 @@
 [package]
 name = "bweso-bitwarden"
-version = "0.1.3"
+version = "0.2.0"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "Bitwarden Password Manager and Vaultwarden client library for Bitwarden ESO Provider"
+description = "Bitwarden Password Manager and Vaultwarden client library for Vaultwarden ESO Provider"
 repository.workspace = true
 homepage.workspace = true
 publish = false
@@ -29,7 +29,7 @@ sha2.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 url.workspace = true
-bweso-core = { version = "0.1.3", path = "../bweso-core" }
+bweso-core = { version = "0.2.0", path = "../bweso-core" }
 zeroize.workspace = true
 
 [dev-dependencies]

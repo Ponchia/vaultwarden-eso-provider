@@ -2,8 +2,9 @@
 members = [
     "crates/bweso-core",
     "crates/bweso-bitwarden",
-    "crates/bitwarden-eso-provider",
+    "crates/vaultwarden-eso-provider",
 ]
+exclude = ["crates/bweso-bitwarden/fuzz"]
 resolver = "2"
 
 [workspace.package]
@@ -11,8 +12,8 @@ edition = "2021"
 rust-version = "1.86"
 license = "Apache-2.0"
 authors = ["Ponchia"]
-repository = "https://github.com/ponchia/bitwarden-eso-provider"
-homepage = "https://github.com/ponchia/bitwarden-eso-provider"
+repository = "https://github.com/ponchia/vaultwarden-eso-provider"
+homepage = "https://github.com/ponchia/vaultwarden-eso-provider"
 readme = "README.md"
 
 [workspace.lints.rust]
@@ -43,9 +44,10 @@ secrecy = "0.10"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sha2 = "0.11"
+subtle = { version = "2.6", default-features = false }
 thiserror = "2.0"
 tokio = { version = "1.40", features = ["macros", "rt-multi-thread", "signal", "net", "sync", "time"] }
-tower = { version = "0.5", features = ["util"] }
+tower = { version = "0.5", features = ["util", "limit", "load-shed"] }
 tower-http = { version = "0.6", features = ["trace"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }

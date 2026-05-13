@@ -19,15 +19,16 @@ use axum::{
     Json, Router,
 };
 use bweso_bitwarden::{
-    BitwardenApiClient, BitwardenApiError, BitwardenAuth, BitwardenCacheConfig,
-    BitwardenClientError, BitwardenDevice, BitwardenEndpoint, BitwardenEndpoints,
-    BitwardenHttpConfig, BitwardenProvider, BitwardenSelector, CipherError,
+    BitwardenApiClient, BitwardenApiClientOptions, BitwardenApiError, BitwardenAuth,
+    BitwardenCacheConfig, BitwardenClientError, BitwardenDevice, BitwardenEndpoint,
+    BitwardenEndpoints, BitwardenHttpConfig, BitwardenProvider, BitwardenSelector, CipherError,
 };
 use bweso_core::{require_non_empty, RemoteRef, SecretDocument};
 use clap::Parser;
 use http::{header, HeaderMap, Request, StatusCode};
 use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
+use subtle::ConstantTimeEq;
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 use url::Url;
@@ -97,6 +98,10 @@ struct Args {
     http_connect_timeout_seconds: u64,
     #[arg(long, env = "BWESO_HTTP_REQUEST_TIMEOUT_SECONDS", default_value_t = 25)]
     http_request_timeout_seconds: u64,
+    /// PEM-encoded CA bundle to trust in addition to the system store. Use for
+    /// Vaultwarden installs on a private CA.
+    #[arg(long, env = "BWESO_CA_BUNDLE_FILE")]
+    ca_bundle_file: Option<PathBuf>,
     #[arg(long, env = "BWESO_WEBHOOK_AUTH_TOKEN")]
     webhook_auth_token: Option<String>,
     #[arg(long, env = "BWESO_WEBHOOK_AUTH_TOKEN_FILE")]
@@ -107,6 +112,10 @@ struct Args {
         default_value_t = false
     )]
     insecure_allow_unauthenticated: bool,
+    /// Maximum concurrent /v1/resolve requests. Excess requests are shed with
+    /// 503. Set to 0 to disable the cap (not recommended for production).
+    #[arg(long, env = "BWESO_RESOLVE_CONCURRENCY_LIMIT", default_value_t = 16)]
+    resolve_concurrency_limit: u32,
     /// Run one HTTP healthcheck request and exit.
     #[arg(long, env = "BWESO_HEALTHCHECK_URL")]
     healthcheck_url: Option<String>,
@@ -119,6 +128,7 @@ struct AppState {
     auth: WebhookAuth,
     metrics: Arc<AppMetrics>,
     lifecycle: Lifecycle,
+    resolve_semaphore: Option<Arc<tokio::sync::Semaphore>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -145,12 +155,20 @@ async fn main() -> anyhow::Result<()> {
     let listen = args.listen;
     let lifecycle = Lifecycle::default();
 
+    let resolve_semaphore = if args.resolve_concurrency_limit > 0 {
+        Some(Arc::new(tokio::sync::Semaphore::new(
+            args.resolve_concurrency_limit as usize,
+        )))
+    } else {
+        None
+    };
     let state = AppState {
         provider: provider_from_args(&args)?,
         selector_policy: SelectorPolicy::from_args(&args)?,
         auth: WebhookAuth::from_args(&args)?,
         metrics: Arc::new(AppMetrics::new()),
         lifecycle: lifecycle.clone(),
+        resolve_semaphore,
     };
 
     let app = build_router(state);
@@ -310,17 +328,19 @@ fn provider_from_args(args: &Args) -> anyhow::Result<Arc<dyn BitwardenProvider>>
         name: args.device_name.clone(),
     };
     let cache_config = BitwardenCacheConfig::new(Duration::from_secs(args.cache_ttl_seconds));
+    let extra_root_certificates = load_extra_root_certificates(args.ca_bundle_file.as_deref())?;
     let http_config = BitwardenHttpConfig::new(
         Duration::from_secs(args.http_connect_timeout_seconds),
         Duration::from_secs(args.http_request_timeout_seconds),
-    );
-    let provider = BitwardenApiClient::with_endpoints_device_cache_and_http_config(
+    )
+    .with_extra_root_certificates(extra_root_certificates);
+    let provider = BitwardenApiClient::with_options(BitwardenApiClientOptions {
         endpoints,
         auth,
         device,
         cache_config,
         http_config,
-    )
+    })
     .context("failed to build Bitwarden-compatible API client")?;
 
     Ok(Arc::new(provider))
@@ -417,7 +437,11 @@ impl WebhookAuth {
                 scheme.eq_ignore_ascii_case("Bearer")
                     && !token.is_empty()
                     && token.trim() == token
-                    && constant_time_eq(expected.expose_secret().as_bytes(), token.as_bytes())
+                    && expected
+                        .expose_secret()
+                        .as_bytes()
+                        .ct_eq(token.as_bytes())
+                        .into()
             }
         }
     }
@@ -446,17 +470,21 @@ fn read_optional_sensitive_arg(
     }
 }
 
-fn constant_time_eq(expected: &[u8], actual: &[u8]) -> bool {
-    let max_len = expected.len().max(actual.len());
-    let mut diff = expected.len() ^ actual.len();
+fn load_extra_root_certificates(path: Option<&Path>) -> anyhow::Result<Vec<reqwest::Certificate>> {
+    let Some(path) = path else {
+        return Ok(Vec::new());
+    };
 
-    for index in 0..max_len {
-        let expected_byte = expected.get(index).copied().unwrap_or(0);
-        let actual_byte = actual.get(index).copied().unwrap_or(0);
-        diff |= usize::from(expected_byte ^ actual_byte);
+    let display = path.display();
+    let pem = fs::read(path).with_context(|| format!("failed to read ca_bundle_file {display}"))?;
+    let certificates = reqwest::Certificate::from_pem_bundle(&pem)
+        .with_context(|| format!("failed to parse PEM certificates from {display}"))?;
+
+    if certificates.is_empty() {
+        anyhow::bail!("ca_bundle_file {display} contained no PEM certificates");
     }
 
-    diff == 0
+    Ok(certificates)
 }
 
 fn build_router(state: AppState) -> Router {
@@ -542,6 +570,24 @@ async fn resolve(
         );
         return Err(auth_error());
     }
+
+    let _permit = match state
+        .resolve_semaphore
+        .as_ref()
+        .map(|semaphore| semaphore.clone().try_acquire_owned())
+    {
+        None => None,
+        Some(Ok(permit)) => Some(permit),
+        Some(Err(_)) => {
+            state.metrics.record_resolve_request(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "error",
+                "overloaded",
+                started.elapsed(),
+            );
+            return Err(public_error(StatusCode::SERVICE_UNAVAILABLE, "overloaded"));
+        }
+    };
 
     let request = match decode_resolve_request(request).await {
         Ok(request) => request,
@@ -686,6 +732,7 @@ fn provider_status_and_kind(error: &BitwardenClientError) -> (StatusCode, &'stat
         BitwardenClientError::UnsupportedVersionSelector => {
             (StatusCode::BAD_REQUEST, "unsupported_version")
         }
+        BitwardenClientError::UnprefixedSelectorKey => (StatusCode::BAD_REQUEST, "validation"),
     }
 }
 
@@ -706,6 +753,7 @@ fn public_error_message(error_kind: &str) -> &'static str {
         "kdf_parameters" => "Bitwarden-compatible KDF parameters are unsupported",
         "sync_payload" => "Bitwarden-compatible sync payload is missing required unlock data",
         "endpoint" => "provider endpoint configuration is invalid",
+        "overloaded" => "provider is at concurrency limit; retry shortly",
         _ => "provider request failed",
     }
 }
@@ -803,6 +851,7 @@ mod tests {
             auth: WebhookAuth::DisabledInsecure,
             metrics: Arc::new(AppMetrics::new()),
             lifecycle: Lifecycle::default(),
+            resolve_semaphore: Some(Arc::new(tokio::sync::Semaphore::new(16))),
         }
     }
 
@@ -813,6 +862,7 @@ mod tests {
             auth: WebhookAuth::Required(Arc::new(token.to_string().into())),
             metrics: Arc::new(AppMetrics::new()),
             lifecycle: Lifecycle::default(),
+            resolve_semaphore: Some(Arc::new(tokio::sync::Semaphore::new(16))),
         }
     }
 
@@ -836,6 +886,8 @@ mod tests {
             allowed_key_prefixes: Vec::new(),
             http_connect_timeout_seconds: 5,
             http_request_timeout_seconds: 25,
+            ca_bundle_file: None,
+            resolve_concurrency_limit: 16,
             webhook_auth_token: Some("test-webhook-token".to_string()),
             webhook_auth_token_file: None,
             insecure_allow_unauthenticated: false,
@@ -1051,6 +1103,10 @@ mod tests {
                 "Bitwarden-compatible sync payload is missing required unlock data",
             ),
             ("endpoint", "provider endpoint configuration is invalid"),
+            (
+                "overloaded",
+                "provider is at concurrency limit; retry shortly",
+            ),
             ("unknown", "provider request failed"),
         ];
 
@@ -1154,6 +1210,40 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn resolve_sheds_when_semaphore_is_exhausted() -> TestResult {
+        let mut state = test_state(Arc::new(StaticProvider));
+        state.resolve_semaphore = Some(Arc::new(tokio::sync::Semaphore::new(1)));
+        let exhauster = state
+            .resolve_semaphore
+            .as_ref()
+            .ok_or("semaphore should be configured")?
+            .clone()
+            .try_acquire_owned()?;
+
+        let app = build_router(state);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/v1/resolve")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(
+                        r#"{"remoteRef":{"key":"name:app/database","property":"DATABASE_URL"}}"#,
+                    ))?,
+            )
+            .await?;
+
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        let body = to_bytes(response.into_body(), usize::MAX).await?;
+        let body = std::str::from_utf8(&body)?;
+        assert!(body.contains("provider is at concurrency limit"));
+        assert!(!body.contains("app/database"));
+        assert!(!body.contains("DATABASE_URL"));
+        drop(exhauster);
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn resolve_returns_secret_document() -> TestResult {
         let response = test_app(Arc::new(StaticProvider))
             .oneshot(
@@ -1162,7 +1252,7 @@ mod tests {
                     .uri("/v1/resolve")
                     .header(header::CONTENT_TYPE, "application/json")
                     .body(Body::from(
-                        r#"{"remoteRef":{"key":"app/database","property":"DATABASE_URL"}}"#,
+                        r#"{"remoteRef":{"key":"name:app/database","property":"DATABASE_URL"}}"#,
                     ))?,
             )
             .await?;
@@ -1194,7 +1284,7 @@ mod tests {
                     .uri("/v1/resolve")
                     .header(header::CONTENT_TYPE, "application/json")
                     .body(Body::from(
-                        r#"{"remoteRef":{"key":"app/database","property":"DATABASE_URL"}}"#,
+                        r#"{"remoteRef":{"key":"name:app/database","property":"DATABASE_URL"}}"#,
                     ))?,
             )
             .await?;
@@ -1209,7 +1299,7 @@ mod tests {
                     .header(header::CONTENT_TYPE, "application/json")
                     .header(header::AUTHORIZATION, "Bearer wrong-token")
                     .body(Body::from(
-                        r#"{"remoteRef":{"key":"app/database","property":"DATABASE_URL"}}"#,
+                        r#"{"remoteRef":{"key":"name:app/database","property":"DATABASE_URL"}}"#,
                     ))?,
             )
             .await?;
@@ -1223,7 +1313,7 @@ mod tests {
                     .header(header::CONTENT_TYPE, "application/json")
                     .header(header::AUTHORIZATION, "Bearer expected-webhook-token")
                     .body(Body::from(
-                        r#"{"remoteRef":{"key":"app/database","property":"DATABASE_URL"}}"#,
+                        r#"{"remoteRef":{"key":"name:app/database","property":"DATABASE_URL"}}"#,
                     ))?,
             )
             .await?;
@@ -1284,7 +1374,7 @@ mod tests {
                     .method(Method::POST)
                     .uri("/v1/resolve")
                     .body(Body::from(
-                        r#"{"remoteRef":{"key":"app/database","property":"DATABASE_URL"}}"#,
+                        r#"{"remoteRef":{"key":"name:app/database","property":"DATABASE_URL"}}"#,
                     ))?,
             )
             .await?;
@@ -1346,7 +1436,7 @@ mod tests {
                     .uri("/v1/resolve")
                     .header(header::CONTENT_TYPE, "application/json")
                     .body(Body::from(
-                        r#"{"remoteRef":{"key":"app/database","property":"DATABASE_URL"}}"#,
+                        r#"{"remoteRef":{"key":"name:app/database","property":"DATABASE_URL"}}"#,
                     ))?,
             )
             .await?;
@@ -1410,7 +1500,7 @@ mod tests {
                     .uri("/v1/resolve")
                     .header(header::CONTENT_TYPE, "application/json")
                     .body(Body::from(
-                        r#"{"remoteRef":{"key":"app/database","property":"DATABASE_URL","version":"42"}}"#,
+                        r#"{"remoteRef":{"key":"name:app/database","property":"DATABASE_URL","version":"42"}}"#,
                     ))?,
             )
             .await?;
@@ -1477,7 +1567,7 @@ mod tests {
                     .uri("/v1/resolve")
                     .header(header::CONTENT_TYPE, "application/json")
                     .body(Body::from(
-                        r#"{"remoteRef":{"key":"app/database","property":"DATABASE_URL"}}"#,
+                        r#"{"remoteRef":{"key":"name:app/database","property":"DATABASE_URL"}}"#,
                     ))?,
             )
             .await?;

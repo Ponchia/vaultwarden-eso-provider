@@ -1,7 +1,7 @@
 replicaCount: 1
 
 image:
-  repository: ghcr.io/ponchia/bitwarden-eso-provider
+  repository: ghcr.io/ponchia/vaultwarden-eso-provider
   pullPolicy: IfNotPresent
   tag: ""
   digest: ""
@@ -53,9 +53,23 @@ config:
   cacheTtlSeconds: 60
   httpConnectTimeoutSeconds: 5
   httpRequestTimeoutSeconds: 25
-  deviceIdentifier: bitwarden-eso-provider
-  deviceName: Bitwarden ESO Provider
+  deviceIdentifier: vaultwarden-eso-provider
+  deviceName: Vaultwarden ESO Provider
   deviceType: 22
+  # Max concurrent /v1/resolve requests. Excess requests are shed with 503.
+  # Set to 0 to disable the cap (not recommended for production).
+  resolveConcurrencyLimit: 16
+
+# Optional PEM CA bundle for Vaultwarden installs on a private CA. When set,
+# the contents are mounted at /var/run/secrets/bweso-ca/ca.pem and
+# BWESO_CA_BUNDLE_FILE points at it. Certificates supplement (not replace)
+# the system trust store.
+caBundle:
+  # Inline PEM (multi-cert OK). Mutually exclusive with existingSecret.
+  pem: ""
+  existingSecret:
+    name: ""
+    key: ca.pem
 
 selectorPolicy:
   # Empty lists mean allow every remoteRef.key visible to the configured

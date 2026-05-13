@@ -1,5 +1,26 @@
 # Threat Model
 
+## Context
+
+This provider's primary deployment target is **Vaultwarden** (and self-hosted
+Bitwarden Password Manager); Bitwarden Cloud Password Manager is a secondary
+target. Bitwarden Secrets Manager — which uses a machine-account model that
+does not require storing a master password in the runtime — is **not** an
+available alternative for Vaultwarden users; Vaultwarden does not implement
+the Secrets Manager API. The realistic alternatives for this audience are
+the `bw` CLI in a cron job, a hand-rolled controller, or kubernetes-external-
+secrets style scrapers. The threat model below assumes that comparison set,
+not BSM.
+
+The trade-off is explicit: this provider keeps a long-lived Vaultwarden /
+Bitwarden user master password and API key in the provider runtime memory so
+it can perform local vault decryption. Anyone with read access to the
+provider pod's memory or filesystem can extract those credentials. The
+recommended mitigations — dedicated per-boundary user accounts, exact `id:`
+selector allowlists, restricted RBAC on the provider namespace, encryption
+at rest for Kubernetes Secrets, NetworkPolicy, and TLS/mTLS in front of the
+webhook — are necessary, not optional.
+
 ## Assets
 
 - Vaultwarden or Bitwarden user API key client ID and client secret.
@@ -72,16 +93,26 @@
 
 ## Unsupported Surfaces For v0.1.x
 
-- Bitwarden Secrets Manager (`bws`) is a separate product surface and is not
-  handled by this provider.
+- Bitwarden Secrets Manager (`bws`) is a separate paid product surface and is
+  not handled by this provider. Vaultwarden does not implement it.
 - Shared organization vault items fail explicitly until organization-key
   decryption is implemented and live-tested for Vaultwarden and Bitwarden
   Cloud.
 - Attachment extraction fails explicitly. Use notes or custom fields for
   multiline material until attachment download/decryption is implemented.
+- Custom CA bundles for Vaultwarden installs on a private CA are not
+  configurable. TLS verification uses the system trust store only. Self-
+  hosted users on internal PKI must terminate TLS with a publicly-trusted
+  certificate (e.g., behind a reverse proxy with cert-manager) until this
+  lands.
+- `/v1/resolve` has no per-source rate limiting. Bearer-token auth, the
+  16 KiB body cap, and single-flight cache refresh are the only mitigations.
 
 ## Open Questions
 
-- Whether Bitwarden Password Manager SDK internals can be reused legally and
-  practically.
-- Whether item revision metadata is sufficient for efficient cache invalidation.
+- Whether the Bitwarden Password Manager SDK internals (the open-source Rust
+  client crates) can be adopted in place of the hand-rolled protocol code in
+  this repo, both legally and practically. The trade-off is one-maintainer
+  drift risk against SDK coupling and dependency footprint.
+- Whether item revision metadata is sufficient for efficient cache
+  invalidation.

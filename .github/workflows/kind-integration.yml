@@ -1,0 +1,147 @@
+name: Kind Integration
+
+# Stands up a kind cluster with Vaultwarden + ESO + this provider and
+# exercises the full webhook path against a real Vaultwarden install.
+#
+# Status: scaffolded. The Vaultwarden user-bootstrap step in
+# scripts/kind-vaultwarden-bootstrap.sh needs a real crypto helper (see
+# roadmap.md "After v0.2") before this workflow can run unattended.
+# Until then this workflow is workflow_dispatch only and is documented in
+# the roadmap as in-progress.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  kind:
+    name: kind + Vaultwarden + ESO
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      KIND_VERSION: v0.24.0
+      KIND_NODE_IMAGE: kindest/node:v1.31.0
+      ESO_VERSION: 0.10.4
+      VAULTWARDEN_IMAGE: vaultwarden/server:1.35.4-alpine
+      ADMIN_TOKEN: kind-integration-admin-token
+      VW_EMAIL: kind-bootstrap@example.test
+      VW_PASSWORD: kind-bootstrap-master-password
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install kind
+        run: |
+          curl -fSL -o /usr/local/bin/kind \
+            "https://kind.sigs.k8s.io/dl/${KIND_VERSION}/kind-linux-amd64"
+          chmod +x /usr/local/bin/kind
+
+      - name: Create kind cluster
+        run: kind create cluster --image "${KIND_NODE_IMAGE}" --name bweso-kind
+
+      - name: Install Vaultwarden
+        run: |
+          kubectl create namespace vaultwarden
+          kubectl -n vaultwarden create configmap vaultwarden-env \
+            --from-literal=ADMIN_TOKEN="${ADMIN_TOKEN}" \
+            --from-literal=SIGNUPS_ALLOWED=true \
+            --from-literal=ROCKET_PORT=8080
+          kubectl apply -n vaultwarden -f - <<'EOF'
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: vaultwarden
+          spec:
+            replicas: 1
+            selector:
+              matchLabels: { app: vaultwarden }
+            template:
+              metadata:
+                labels: { app: vaultwarden }
+              spec:
+                containers:
+                  - name: vaultwarden
+                    image: vaultwarden/server:1.35.4-alpine
+                    envFrom:
+                      - configMapRef: { name: vaultwarden-env }
+                    ports:
+                      - containerPort: 8080
+                    readinessProbe:
+                      httpGet: { path: /alive, port: 8080 }
+                      periodSeconds: 2
+          ---
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: vaultwarden
+          spec:
+            selector: { app: vaultwarden }
+            ports:
+              - port: 80
+                targetPort: 8080
+          EOF
+          kubectl -n vaultwarden rollout status deployment/vaultwarden --timeout=120s
+
+      - name: Bootstrap Vaultwarden user, API key, and vault item
+        id: bootstrap
+        run: |
+          kubectl -n vaultwarden port-forward svc/vaultwarden 18080:80 &
+          PF_PID=$!
+          trap "kill $PF_PID" EXIT
+          for _ in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:18080/alive >/dev/null; then break; fi
+            sleep 1
+          done
+          # This is where the bootstrap helper runs. Until the real
+          # registration crypto is wired up, this step is intentionally
+          # left to fail so the workflow does not silently pass.
+          ./scripts/kind-vaultwarden-bootstrap.sh \
+            http://127.0.0.1:18080 \
+            "$VW_EMAIL" \
+            "$VW_PASSWORD" \
+            >> "$GITHUB_OUTPUT"
+
+      - name: Install ESO
+        run: |
+          helm repo add external-secrets https://charts.external-secrets.io
+          helm install eso external-secrets/external-secrets \
+            -n external-secrets --create-namespace \
+            --version "${ESO_VERSION}" --set installCRDs=true
+          kubectl -n external-secrets rollout status \
+            deployment/eso-external-secrets --timeout=180s
+
+      - name: Build and load provider image
+        run: |
+          docker build -t vaultwarden-eso-provider:kind .
+          kind load docker-image vaultwarden-eso-provider:kind --name bweso-kind
+
+      - name: Install provider
+        run: |
+          kubectl create namespace bweso-system
+          kubectl -n bweso-system create secret generic bweso-credentials \
+            --from-literal=client-id='${{ steps.bootstrap.outputs.client_id }}' \
+            --from-literal=client-secret='${{ steps.bootstrap.outputs.client_secret }}' \
+            --from-literal=master-password="$VW_PASSWORD" \
+            --from-literal=webhook-token='kind-webhook-token'
+          helm install bweso deploy/helm/vaultwarden-eso-provider \
+            -n bweso-system \
+            --set-string image.repository=vaultwarden-eso-provider \
+            --set-string image.tag=kind \
+            --set-string image.pullPolicy=Never \
+            --set-string config.singleOriginUrl='http://vaultwarden.vaultwarden.svc.cluster.local' \
+            --set-string credentials.existingSecret.name=bweso-credentials \
+            --set-string "selectorPolicy.allowedKeys[0]=id:${{ steps.bootstrap.outputs.item_id }}"
+          kubectl -n bweso-system rollout status deployment/bweso-vaultwarden-eso-provider --timeout=120s
+
+      - name: Apply ExternalSecret and verify
+        run: |
+          kubectl create namespace app
+          kubectl -n app create secret generic bweso-webhook-auth \
+            --from-literal=webhook-token='kind-webhook-token'
+          kubectl -n app label secret bweso-webhook-auth external-secrets.io/type=webhook
+          # SecretStore + ExternalSecret manifests; assert target Secret
+          # appears with expected fields.
+          echo "TODO: apply manifests and assert target Secret"
+          exit 1

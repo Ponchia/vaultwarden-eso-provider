@@ -8,7 +8,7 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      app.kubernetes.io/name: bitwarden-eso-provider
+      app.kubernetes.io/name: vaultwarden-eso-provider
   policyTypes:
     - Egress
   egress:

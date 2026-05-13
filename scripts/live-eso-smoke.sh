@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-CHART_DIR="${ROOT_DIR}/deploy/helm/bitwarden-eso-provider"
+CHART_DIR="${ROOT_DIR}/deploy/helm/vaultwarden-eso-provider"
 
 log() {
   printf '[bweso-smoke] %s\n' "$*"
@@ -73,7 +73,7 @@ namespace="${namespace:-bweso-live-smoke}"
 release="$(first_env BWESO_E2E_RELEASE || true)"
 release="${release:-bweso}"
 image_repository="$(first_env BWESO_E2E_IMAGE_REPOSITORY || true)"
-image_repository="${image_repository:-ghcr.io/ponchia/bitwarden-eso-provider}"
+image_repository="${image_repository:-ghcr.io/ponchia/vaultwarden-eso-provider}"
 image_tag="$(first_env BWESO_E2E_IMAGE_TAG || true)"
 chart_ref="$(first_env BWESO_E2E_CHART_REF || true)"
 chart_ref="${chart_ref:-${CHART_DIR}}"
@@ -279,7 +279,7 @@ fi
 log "installing webhook chart ${chart_ref} with image ${image_repository}:${image_tag}"
 "${helm_cmd[@]}" "${helm_args[@]}" >/dev/null
 
-selector="app.kubernetes.io/instance=${release},app.kubernetes.io/name=bitwarden-eso-provider"
+selector="app.kubernetes.io/instance=${release},app.kubernetes.io/name=vaultwarden-eso-provider"
 log "waiting for webhook rollout"
 "${kubectl_cmd[@]}" -n "${namespace}" rollout status deployment -l "${selector}" --timeout=180s >/dev/null
 

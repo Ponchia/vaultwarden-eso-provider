@@ -54,14 +54,14 @@ jobs:
           version: ${{ env.HELM_VERSION }}
 
       - name: Lint chart
-        run: helm lint deploy/helm/bitwarden-eso-provider -f deploy/helm/lint-values.yaml
+        run: helm lint deploy/helm/vaultwarden-eso-provider -f deploy/helm/lint-values.yaml
 
       - name: Render chart
-        run: helm template bweso deploy/helm/bitwarden-eso-provider -f deploy/helm/lint-values.yaml --namespace bweso-system
+        run: helm template bweso deploy/helm/vaultwarden-eso-provider -f deploy/helm/lint-values.yaml --namespace bweso-system
 
       - name: Render chart with selector policy and network controls
         run: >
-          helm template bweso deploy/helm/bitwarden-eso-provider
+          helm template bweso deploy/helm/vaultwarden-eso-provider
           -f deploy/helm/lint-values.yaml
           --namespace bweso-system
           --set-string 'selectorPolicy.allowedKeys[0]=id:example-item'
@@ -72,7 +72,7 @@ jobs:
 
       - name: Render chart with ServiceMonitor
         run: >
-          helm template bweso deploy/helm/bitwarden-eso-provider
+          helm template bweso deploy/helm/vaultwarden-eso-provider
           -f deploy/helm/lint-values.yaml
           --namespace bweso-system
           --set metrics.serviceMonitor.enabled=true
@@ -139,7 +139,7 @@ jobs:
 
       - name: Checkov Helm scan
         run: >
-          checkov -d deploy/helm/bitwarden-eso-provider
+          checkov -d deploy/helm/vaultwarden-eso-provider
           --framework helm
           --var-file deploy/helm/lint-values.yaml
           --skip-check CKV_K8S_21

@@ -38,7 +38,7 @@ spec:
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
-        - name: bitwarden-eso-provider
+        - name: vaultwarden-eso-provider
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
           image: {{ include "bweso.image" . | quote }}
@@ -85,6 +85,8 @@ spec:
               value: {{ .Values.config.deviceName | quote }}
             - name: BWESO_DEVICE_TYPE
               value: {{ .Values.config.deviceType | quote }}
+            - name: BWESO_RESOLVE_CONCURRENCY_LIMIT
+              value: {{ .Values.config.resolveConcurrencyLimit | quote }}
             {{- if .Values.selectorPolicy.allowedKeys }}
             - name: BWESO_ALLOWED_KEYS
               value: {{ join "," .Values.selectorPolicy.allowedKeys | quote }}
@@ -92,6 +94,10 @@ spec:
             {{- if .Values.selectorPolicy.allowedKeyPrefixes }}
             - name: BWESO_ALLOWED_KEY_PREFIXES
               value: {{ join "," .Values.selectorPolicy.allowedKeyPrefixes | quote }}
+            {{- end }}
+            {{- if or .Values.caBundle.pem .Values.caBundle.existingSecret.name }}
+            - name: BWESO_CA_BUNDLE_FILE
+              value: /var/run/secrets/bweso-ca/{{ .Values.caBundle.existingSecret.key | default "ca.pem" }}
             {{- end }}
             - name: RUST_LOG
               value: {{ .Values.logging.rustLog | quote }}
@@ -116,11 +122,22 @@ spec:
             - name: credentials
               mountPath: /var/run/secrets/bweso
               readOnly: true
+            {{- if or .Values.caBundle.pem .Values.caBundle.existingSecret.name }}
+            - name: ca-bundle
+              mountPath: /var/run/secrets/bweso-ca
+              readOnly: true
+            {{- end }}
       volumes:
         - name: credentials
           secret:
             secretName: {{ include "bweso.credentialsSecretName" . }}
             defaultMode: 0400
+        {{- if or .Values.caBundle.pem .Values.caBundle.existingSecret.name }}
+        - name: ca-bundle
+          secret:
+            secretName: {{ if .Values.caBundle.existingSecret.name }}{{ .Values.caBundle.existingSecret.name }}{{ else }}{{ include "bweso.fullname" . }}-ca-bundle{{ end }}
+            defaultMode: 0444
+        {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

@@ -133,7 +133,7 @@ does not use the local checkout:
 
 ```bash
 export BWESO_E2E_IMAGE_TAG="0.1.3"
-export BWESO_E2E_CHART_REF="oci://ghcr.io/ponchia/charts/bitwarden-eso-provider"
+export BWESO_E2E_CHART_REF="oci://ghcr.io/ponchia/charts/vaultwarden-eso-provider"
 export BWESO_E2E_CHART_VERSION="0.1.3"
 ```
 

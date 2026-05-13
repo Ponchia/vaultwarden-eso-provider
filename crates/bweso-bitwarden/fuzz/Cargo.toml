@@ -1,0 +1,21 @@
+[package]
+name = "bweso-bitwarden-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[workspace]
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+bweso-bitwarden = { path = ".." }
+
+[[bin]]
+name = "encrypted_string_from_str"
+path = "fuzz_targets/encrypted_string_from_str.rs"
+test = false
+doc = false
+bench = false

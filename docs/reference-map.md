@@ -1,7 +1,7 @@
 # Upstream Research Map
 
 This page records the public upstream projects used as research inputs for
-Bitwarden ESO Provider. Do not vendor source from these repositories into this
+Vaultwarden ESO Provider. Do not vendor source from these repositories into this
 project without an explicit license review.
 
 ## Repositories
