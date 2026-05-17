@@ -105,5 +105,7 @@ merging so the next workflow run is not blocked by selected-actions policy.
 Dependabot patch-only PRs are safe to merge automatically after CI succeeds.
 Minor and major updates stay manual because Rust `0.x` crates can contain API
 changes in semver-minor updates, and Docker/toolchain updates can change clippy
-behavior. Related RustCrypto KDF/MAC/hash crates are grouped so Dependabot does
-not open incompatible one-crate-at-a-time updates.
+behavior. Known incompatible RustCrypto block-cipher and reqwest 0.x
+semver-minor updates are ignored until a maintainer plans those migrations.
+Related RustCrypto KDF/MAC/hash crates are grouped so Dependabot does not open
+incompatible one-crate-at-a-time updates.

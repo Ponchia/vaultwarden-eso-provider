@@ -21,12 +21,29 @@ updates:
       - dependency-name: cbc
         update-types:
           - version-update:semver-minor
+      # reqwest 0.x minor releases can rename TLS features and need a
+      # deliberate HTTP-client migration instead of an automatic PR.
+      - dependency-name: reqwest
+        update-types:
+          - version-update:semver-minor
 
   - package-ecosystem: cargo
     directory: /crates/bweso-bitwarden/fuzz
     schedule:
       interval: weekly
     open-pull-requests-limit: 2
+    ignore:
+      # The fuzz workspace resolves through the parent crate, so mirror the
+      # known incompatible 0.x minor-release blocks from the main workspace.
+      - dependency-name: aes
+        update-types:
+          - version-update:semver-minor
+      - dependency-name: cbc
+        update-types:
+          - version-update:semver-minor
+      - dependency-name: reqwest
+        update-types:
+          - version-update:semver-minor
 
   - package-ecosystem: github-actions
     directory: /
