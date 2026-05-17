@@ -105,6 +105,9 @@ property on that item and can request whole-item extraction unless your ESO
 manifests, RBAC, and GitOps review prevent it. Use one dedicated provider
 credential per namespace or trust boundary for strict isolation.
 
+See [`../selectors-and-policy.md`](../selectors-and-policy.md) for selector
+syntax, property names, policy scope, and ConfigMap-backed hot reload behavior.
+
 ## Recommended Production Pattern
 
 For each namespace or trust boundary:

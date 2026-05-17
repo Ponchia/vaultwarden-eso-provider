@@ -56,6 +56,8 @@ Selector policy matches only the raw ESO `remoteRef.key` or `dataFrom.extract.ke
 It does not restrict individual properties on an allowed item. Treat each
 allowed item as fully readable by every namespace that can use the matching
 `SecretStore`, and use dedicated provider credentials for stronger isolation.
+See [`../../docs/selectors-and-policy.md`](../../docs/selectors-and-policy.md)
+for the full selector and property reference.
 
 The ExternalSecret examples use `creationPolicy: Orphan`,
 `deletionPolicy: Retain`, and template `mergePolicy: Merge`. That combination

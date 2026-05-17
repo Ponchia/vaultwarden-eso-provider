@@ -8,7 +8,9 @@ Provider.
 - Visibility: public.
 - Issues: enabled.
 - Discussions: optional; enable only if issue traffic becomes noisy.
-- Wiki: disabled. Keep docs in Git.
+- Wiki: disabled. Keep docs in Git. If the wiki is enabled later, use it only
+  as a curated mirror or navigation front door; see
+  [`github-wiki.md`](github-wiki.md).
 - Projects: disabled unless there is an active public roadmap board.
 - Merge strategy: squash merge enabled, merge commits disabled, rebase merge
   disabled.

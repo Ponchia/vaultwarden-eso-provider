@@ -22,6 +22,8 @@ pre-`v1.0.0` breaking runtime and chart defaults.
   additional zeroization for plaintext/decrypted buffers.
 - Tightened Helm NetworkPolicy defaults and added release evidence,
   signing, attestation, Scorecard, and release-note automation.
+- Documentation: shortened the README and added a docs index, selector/policy
+  reference, and GitHub Wiki strategy.
 
 ## v0.2.1 - 2026-05-17
 
