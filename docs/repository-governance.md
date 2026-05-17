@@ -89,7 +89,7 @@ third-party action SHAs used by CI and release workflows:
 - `docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf`
 - `docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd`
 - `dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8`
-- `ossf/scorecard-action@05b42c624433fc40578a4040d5cf5e36ddca8cde`
+- `ossf/scorecard-action@4eaacf0543bb3f2c246792bd56e8cdeffafb205a`
 - `sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6`
 - `softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda`
 - `Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32`
