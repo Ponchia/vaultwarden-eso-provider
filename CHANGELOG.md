@@ -10,6 +10,9 @@ before release so generated notes land in the right category.
 
 ## Unreleased
 
+Recommended next version: `v0.3.0`, because the unreleased changes include
+pre-`v1.0.0` breaking runtime and chart defaults.
+
 - Breaking: hardened selector-policy defaults so installs must configure an
   allowlist or explicitly opt in to allow-all behavior.
 - Breaking: when `networkPolicy.enabled=true`, the default empty ingress and

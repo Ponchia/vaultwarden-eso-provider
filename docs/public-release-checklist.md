@@ -14,6 +14,12 @@ runtime behavior, the container image, the Helm chart, install instructions for
 the current chart, dependency/security fixes users should consume, or a public
 compatibility/security claim that needs to be tied to an exact artifact.
 
+For the pre-`v1.0.0` line, use a minor version bump for breaking runtime or
+chart-default changes. Use a patch version only for compatible fixes and
+documentation/packaging corrections. The current unreleased selector-policy and
+NetworkPolicy default changes should therefore ship as `v0.3.0`, not `v0.2.2`,
+if they are published.
+
 Required before calling a release generally usable:
 
 - Commit the public collaboration files: `CONTRIBUTING.md`, `SECURITY.md`,

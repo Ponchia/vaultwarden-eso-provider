@@ -78,29 +78,27 @@ categories.
 
 ## Allowed Workflow Actions
 
-Keep the repository Actions policy restricted to GitHub-owned actions plus these
-third-party action patterns used by CI and release workflows:
+Keep the repository Actions policy restricted to GitHub-owned actions plus the
+third-party action SHAs used by CI and release workflows:
 
 - `aquasecurity/setup-trivy@3fb12ec12f41e471780db15c232d5dd185dcb514`
-- `aquasecurity/trivy-action@v0.36.0`
-- `actions/attest@v4`
-- `azure/setup-helm@v5`
-- `docker/build-push-action@v7`
-- `docker/login-action@v4`
-- `docker/metadata-action@v6`
-- `docker/setup-buildx-action@v4`
-- `dtolnay/rust-toolchain@stable`
-- `github/codeql-action/analyze@v4`
-- `github/codeql-action/init@v4`
-- `github/codeql-action/upload-sarif@v4`
-- `ossf/scorecard-action@v2.4.2`
-- `sigstore/cosign-installer@v4.1.2`
-- `softprops/action-gh-release@v3`
-- `Swatinem/rust-cache@v2`
-- `taiki-e/install-action@v2`
+- `aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25`
+- `azure/setup-helm@dda3372f752e03dde6b3237bc9431cdc2f7a02a2`
+- `docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f`
+- `docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121`
+- `docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf`
+- `docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd`
+- `dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8`
+- `ossf/scorecard-action@05b42c624433fc40578a4040d5cf5e36ddca8cde`
+- `sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6`
+- `softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda`
+- `Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32`
+- `taiki-e/install-action@7be9fd86bd1707236395105d6e9329dd1511a7e1`
 
 `aquasecurity/setup-trivy` is not referenced directly by repository workflows;
 it is the transitive setup action invoked by the pinned Trivy action.
+When Dependabot updates a pinned action SHA, update this allowlist before
+merging so the next workflow run is not blocked by selected-actions policy.
 
 ## Dependabot Policy
 

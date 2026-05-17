@@ -8,16 +8,18 @@ on:
       - completed
 
 permissions:
-  checks: read
-  contents: write
-  pull-requests: write
-  statuses: read
+  contents: read
 
 jobs:
   merge-patch-update:
     name: Merge Patch Update
     if: github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
+    permissions:
+      checks: read
+      contents: write
+      pull-requests: write
+      statuses: read
     steps:
       - name: Merge safe Dependabot patch PR
         env:
