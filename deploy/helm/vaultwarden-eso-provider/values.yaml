@@ -77,6 +77,21 @@ selectorPolicy:
   # default and allow only matching selectors.
   allowedKeys: []
   allowedKeyPrefixes: []
+  # Optional: source the allow-list from an existing ConfigMap instead of (or
+  # in addition to) the inline lists above. The provider re-reads the mounted
+  # files every reloadIntervalSeconds, so updating the ConfigMap (e.g. via
+  # GitOps) changes the policy WITHOUT restarting the provider. Each key holds
+  # one entry per line; commas also split, blank lines and `#` comments are
+  # ignored. File entries are unioned with the inline lists.
+  configMap:
+    name: ""
+    keys:
+      allowedKeys: allowed-keys
+      # Leave empty to not wire a prefixes file.
+      allowedKeyPrefixes: ""
+  # Seconds between policy file re-reads. 0 reads once at startup and never
+  # again. Only used when configMap.name is set.
+  reloadIntervalSeconds: 30
 
 auth:
   enabled: true

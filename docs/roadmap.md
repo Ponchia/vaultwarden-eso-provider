@@ -3,6 +3,19 @@
 This roadmap separates what shipped in the `v0.1.x` release line from
 follow-up work.
 
+## v0.2.1
+
+Released after `v0.2.0`:
+
+- **Hot-reloadable selector policy**: `BWESO_ALLOWED_KEYS_FILE` /
+  `BWESO_ALLOWED_KEY_PREFIXES_FILE` plus `BWESO_POLICY_RELOAD_INTERVAL_SECONDS`
+  and the `selectorPolicy.configMap` Helm values. A ConfigMap-sourced
+  allow-list is re-read on an interval and hot-swapped, so onboarding an item
+  no longer requires a provider restart. No file configured ⇒ behavior is
+  unchanged; a configured file that evaluates to zero entries is an error
+  (no fail-open); reload outcomes are exported as metrics. See
+  [`decisions/0004-hot-reloadable-selector-policy.md`](decisions/0004-hot-reloadable-selector-policy.md).
+
 ## v0.1.x
 
 The first public release includes:

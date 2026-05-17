@@ -12,6 +12,8 @@ Recommended order:
 - `whole-item.example.yaml`: whole-item extraction into a target Secret.
 - `secret-types.example.yaml`: docker config JSON, basic auth, SSH auth, and
   multiline files.
+- `selector-policy-configmap.example.yaml`: hot-reloadable selector policy
+  sourced from a ConfigMap (onboard items with no provider restart).
 - `reloader.example.yaml`: Stakater Reloader annotation pattern.
 - `clustersecretstore.warning.example.yaml`: shared store pattern with the
   security warning that should accompany it.

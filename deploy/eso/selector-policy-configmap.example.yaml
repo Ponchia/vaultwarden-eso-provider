@@ -1,0 +1,31 @@
+# Hot-reloadable selector policy.
+#
+# Mount this ConfigMap into the provider (Helm:
+# `--set-string selectorPolicy.configMap.name=bweso-selector-policy`). The
+# provider re-reads it every BWESO_POLICY_RELOAD_INTERVAL_SECONDS and swaps the
+# active allow-list in place, so changing this ConfigMap onboards a new item
+# WITHOUT restarting the provider and without the missed-restart failure mode.
+#
+# Format for each key: one entry per line. Commas also split. Blank lines and
+# lines starting with `#` are ignored, so the lists can carry comments.
+#
+# Replace the placeholder item IDs before applying.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bweso-selector-policy
+  namespace: bweso-system
+data:
+  # Wired via BWESO_ALLOWED_KEYS_FILE. Exact selector keys.
+  allowed-keys: |
+    # app-a database credentials
+    id:00000000-0000-0000-0000-000000000001
+    # app-b API token
+    id:00000000-0000-0000-0000-000000000002
+
+  # Optional, wired via BWESO_ALLOWED_KEY_PREFIXES_FILE. Only set
+  # selectorPolicy.configMap.keys.allowedKeyPrefixes if you use this. Prefixes
+  # are broader than exact IDs; prefer exact `id:` entries where possible.
+  allowed-key-prefixes: |
+    # everything under the reviewed shared-platform grouping
+    id:shared-platform/

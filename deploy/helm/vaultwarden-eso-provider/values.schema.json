@@ -240,6 +240,32 @@
             "type": "string",
             "minLength": 1
           }
+        },
+        "reloadIntervalSeconds": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 86400
+        },
+        "configMap": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "keys": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "allowedKeys": {
+                  "type": "string"
+                },
+                "allowedKeyPrefixes": {
+                  "type": "string"
+                }
+              }
+            }
+          }
         }
       }
     },

@@ -372,6 +372,66 @@ For each namespace or trust boundary:
   security boundary and every namespace that can reference it may read the
   allowed items.
 
+## Hot-reloading the selector policy
+
+`selectorPolicy.allowedKeys` / `allowedKeyPrefixes` (env `BWESO_ALLOWED_KEYS` /
+`BWESO_ALLOWED_KEY_PREFIXES`) are read once at process start. Onboarding a new
+item by changing them requires a provider rollout.
+
+To onboard items without restarting the provider, source the allow-list from a
+ConfigMap instead:
+
+```bash
+helm upgrade --install bweso "${CHART_REF}" \
+  --namespace bweso-system \
+  --set-string config.singleOriginUrl='https://vaultwarden.example.com' \
+  --set-string credentials.existingSecret.name='bweso-credentials' \
+  --set-string selectorPolicy.configMap.name='bweso-selector-policy' \
+  --set selectorPolicy.reloadIntervalSeconds=30
+```
+
+The ConfigMap is mounted read-only at `/etc/bweso/policy` and wired via
+`BWESO_ALLOWED_KEYS_FILE` (and optionally `BWESO_ALLOWED_KEY_PREFIXES_FILE`).
+Each key holds one entry per line; commas also split, and blank lines and `#`
+comment lines are ignored. File entries are unioned with any inline lists.
+
+The provider re-reads the files every `reloadIntervalSeconds`
+(`BWESO_POLICY_RELOAD_INTERVAL_SECONDS`, default `30`; `0` reads once and never
+again) and hot-swaps the active policy. Because mounted ConfigMap volumes
+update in place, changing the ConfigMap — e.g. through GitOps — updates the
+allow-list within one interval with **no provider restart and no missed-restart
+failure mode**. A transient unreadable or invalid file is logged and the last
+known-good policy keeps serving.
+
+If the **effective** policy — inline entries plus every configured file —
+evaluates to **zero entries** (empty/comment-only file, or a ConfigMap
+accidentally emptied), that is treated as an error, not as allow-all: the
+provider fails fast at startup and keeps the last known-good policy on reload.
+It can never silently widen to allow-all. If inline entries are also
+configured, an emptied file instead narrows the effective policy to the inline
+baseline (still never wider) rather than erroring. The legacy "no policy
+configured ⇒ allow all" behavior applies only when no inline list and no file
+source are set at all. See
+[deploy/eso/selector-policy-configmap.example.yaml](deploy/eso/selector-policy-configmap.example.yaml).
+
+With more than one provider replica, a ConfigMap change propagates per pod
+(kubelet projection) and is then picked up on each pod's own reload interval, so
+replicas may briefly serve slightly different policies during the rollout
+window. This is an allow-list, so the effect is transient over-restriction or
+over-permission bounded by the interval; pin `reloadIntervalSeconds: 0` and use
+a rollout if you need strictly coordinated policy changes.
+
+On a reload *error* the provider keeps serving the last known-good policy (it
+never widens to allow-all). There is intentionally no fail-closed-on-reload
+mode: a transient ConfigMap blip should not cause a cluster-wide secret-sync
+outage. **High-assurance trust boundaries** that need coordinated, audited
+policy changes should set `reloadIntervalSeconds: 0` and change the policy via
+a normal rollout (a bad config then fails the pod at startup), and alert on a
+rising `bweso_policy_reloads_total{outcome="failure"}` rate and a growing
+last-success age. The hot-reload path is for low-friction onboarding, not for
+security-critical revocation timing — revoke by rotating/removing the item in
+the vault.
+
 ## Observability
 
 The provider exposes:
@@ -382,7 +442,15 @@ The provider exposes:
 
 Metrics are low-cardinality and redacted. They cover HTTP requests, resolve
 outcomes, error classes, latency, cache hits, cache refreshes, and last
-successful cache refresh age.
+successful cache refresh age. When a file-backed selector policy is configured,
+they also include `bweso_policy_reloads_total{outcome="success|unchanged|failure"}`,
+`bweso_policy_active_allowed_keys` / `bweso_policy_active_allowed_key_prefixes`
+(counts only — never the keys), and the last successful policy evaluation
+timestamp and age — alert on a rising `failure` rate or a growing
+last-success age to catch a wedged ConfigMap or stale policy. The gauges are
+seeded from the startup evaluation, so they are present from `t0` even with
+`reloadIntervalSeconds: 0` (no reload task); the counter family stays at zero
+until the first reload cycle.
 
 The Helm chart can render a `ServiceMonitor` when Prometheus Operator CRDs are
 installed. Using the same `CHART_REF` from the install step:

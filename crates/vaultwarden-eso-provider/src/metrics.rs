@@ -74,6 +74,43 @@ impl AppMetrics {
         });
     }
 
+    /// Record one selector-policy reload cycle. `outcome` is one of
+    /// `"success"` (rules changed), `"unchanged"` (re-read, no diff), or
+    /// `"failure"` (read/parse error; previous rules retained). `active_*`
+    /// are the counts of the currently-serving policy — never the keys
+    /// themselves, preserving the redaction contract.
+    pub(crate) fn record_policy_reload(
+        &self,
+        outcome: &'static str,
+        active_keys: usize,
+        active_key_prefixes: usize,
+    ) {
+        self.record(|inner| {
+            *inner.policy_reloads.entry(outcome).or_insert(0) += 1;
+            inner.policy_active_keys = active_keys as u64;
+            inner.policy_active_key_prefixes = active_key_prefixes as u64;
+            if outcome != "failure" {
+                inner.policy_last_success = Some(SystemTime::now());
+            }
+        });
+    }
+
+    /// Seed the policy gauges from the startup evaluation so a file-backed
+    /// policy is observable immediately — including when
+    /// `reloadIntervalSeconds: 0` means no reload task ever runs, and during
+    /// the warm-up window before the first reload tick. Does NOT bump the
+    /// reload counter (no reload cycle has occurred); it records the active
+    /// counts and treats the startup evaluation as the initial success.
+    pub(crate) fn record_policy_baseline(&self, active_keys: usize, active_key_prefixes: usize) {
+        self.record(|inner| {
+            inner.policy_active_keys = active_keys as u64;
+            inner.policy_active_key_prefixes = active_key_prefixes as u64;
+            if inner.policy_last_success.is_none() {
+                inner.policy_last_success = Some(SystemTime::now());
+            }
+        });
+    }
+
     pub(crate) fn render(
         &self,
         ready: bool,
@@ -141,6 +178,7 @@ impl AppMetrics {
         if let Some(cache_metrics) = cache_metrics {
             render_cache_metrics(&mut output, cache_metrics);
         }
+        render_policy_metrics(&mut output, &snapshot);
 
         output
     }
@@ -169,6 +207,10 @@ impl AppMetrics {
 struct MetricsInner {
     http_requests: BTreeMap<HttpMetricKey, HistogramValues>,
     resolve_requests: BTreeMap<ResolveMetricKey, HistogramValues>,
+    policy_reloads: BTreeMap<&'static str, u64>,
+    policy_active_keys: u64,
+    policy_active_key_prefixes: u64,
+    policy_last_success: Option<SystemTime>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
@@ -383,6 +425,111 @@ fn render_cache_metrics(output: &mut String, metrics: BitwardenCacheMetrics) {
     }
 }
 
+fn render_policy_metrics(output: &mut String, snapshot: &MetricsInner) {
+    // Emit once a file-backed policy exists: either the startup baseline set
+    // `policy_last_success`, or at least one reload cycle ran. Deployments
+    // with no file-backed policy stay clean (neither is ever set).
+    if snapshot.policy_reloads.is_empty() && snapshot.policy_last_success.is_none() {
+        return;
+    }
+
+    append_line(
+        output,
+        format_args!(
+            "# HELP bweso_policy_reloads_total Selector-policy reload cycles by outcome (success, unchanged, failure)."
+        ),
+    );
+    append_line(
+        output,
+        format_args!("# TYPE bweso_policy_reloads_total counter"),
+    );
+    for outcome in ["success", "unchanged", "failure"] {
+        let count = snapshot.policy_reloads.get(outcome).copied().unwrap_or(0);
+        append_labeled_metric(
+            output,
+            "bweso_policy_reloads_total",
+            &[("outcome", outcome)],
+            &count.to_string(),
+        );
+    }
+
+    append_line(
+        output,
+        format_args!(
+            "# HELP bweso_policy_active_allowed_keys Exact selector keys in the currently-served allow-list."
+        ),
+    );
+    append_line(
+        output,
+        format_args!("# TYPE bweso_policy_active_allowed_keys gauge"),
+    );
+    append_line(
+        output,
+        format_args!(
+            "bweso_policy_active_allowed_keys {}",
+            snapshot.policy_active_keys
+        ),
+    );
+    append_line(
+        output,
+        format_args!(
+            "# HELP bweso_policy_active_allowed_key_prefixes Selector key prefixes in the currently-served allow-list."
+        ),
+    );
+    append_line(
+        output,
+        format_args!("# TYPE bweso_policy_active_allowed_key_prefixes gauge"),
+    );
+    append_line(
+        output,
+        format_args!(
+            "bweso_policy_active_allowed_key_prefixes {}",
+            snapshot.policy_active_key_prefixes
+        ),
+    );
+
+    if let Some(last_success) = snapshot.policy_last_success {
+        if let Ok(since_epoch) = last_success.duration_since(UNIX_EPOCH) {
+            append_line(
+                output,
+                format_args!(
+                    "# HELP bweso_policy_last_reload_success_timestamp_seconds Unix timestamp of the last successful selector-policy evaluation."
+                ),
+            );
+            append_line(
+                output,
+                format_args!("# TYPE bweso_policy_last_reload_success_timestamp_seconds gauge"),
+            );
+            append_line(
+                output,
+                format_args!(
+                    "bweso_policy_last_reload_success_timestamp_seconds {}",
+                    since_epoch.as_secs()
+                ),
+            );
+        }
+        if let Ok(age) = SystemTime::now().duration_since(last_success) {
+            append_line(
+                output,
+                format_args!(
+                    "# HELP bweso_policy_last_reload_success_age_seconds Age in seconds of the last successful selector-policy evaluation."
+                ),
+            );
+            append_line(
+                output,
+                format_args!("# TYPE bweso_policy_last_reload_success_age_seconds gauge"),
+            );
+            append_line(
+                output,
+                format_args!(
+                    "bweso_policy_last_reload_success_age_seconds {}",
+                    age.as_secs()
+                ),
+            );
+        }
+    }
+}
+
 fn append_histogram(
     output: &mut String,
     name: &str,
@@ -511,5 +658,48 @@ mod tests {
         assert_eq!(histogram.buckets[0], 0);
         assert_eq!(histogram.buckets[1], 1);
         assert_eq!(histogram.count, 1);
+    }
+
+    #[test]
+    fn policy_reload_metrics_render_after_recording() {
+        let metrics = AppMetrics::new();
+        metrics.record_policy_reload("success", 3, 1);
+        metrics.record_policy_reload("unchanged", 3, 1);
+        metrics.record_policy_reload("failure", 3, 1);
+
+        let output = metrics.render(true, None);
+
+        assert!(output.contains("bweso_policy_reloads_total{outcome=\"success\"} 1"));
+        assert!(output.contains("bweso_policy_reloads_total{outcome=\"unchanged\"} 1"));
+        assert!(output.contains("bweso_policy_reloads_total{outcome=\"failure\"} 1"));
+        assert!(output.contains("bweso_policy_active_allowed_keys 3"));
+        assert!(output.contains("bweso_policy_active_allowed_key_prefixes 1"));
+        assert!(output.contains("bweso_policy_last_reload_success_timestamp_seconds "));
+        // Redaction: counts only, never the selector keys themselves.
+        assert!(!output.contains("id:"));
+    }
+
+    #[test]
+    fn policy_metrics_absent_until_first_reload() {
+        let metrics = AppMetrics::new();
+        let output = metrics.render(true, None);
+        assert!(!output.contains("bweso_policy_reloads_total"));
+        assert!(!output.contains("bweso_policy_active_allowed_keys"));
+    }
+
+    #[test]
+    fn policy_baseline_makes_metrics_visible_with_zero_counters() {
+        let metrics = AppMetrics::new();
+        // No reload cycle yet (e.g. reloadIntervalSeconds:0), only startup.
+        metrics.record_policy_baseline(2, 0);
+
+        let output = metrics.render(true, None);
+
+        assert!(output.contains("bweso_policy_active_allowed_keys 2"));
+        assert!(output.contains("bweso_policy_active_allowed_key_prefixes 0"));
+        assert!(output.contains("bweso_policy_last_reload_success_timestamp_seconds "));
+        // Counter family present but all zero — no reload cycle has run.
+        assert!(output.contains("bweso_policy_reloads_total{outcome=\"success\"} 0"));
+        assert!(output.contains("bweso_policy_reloads_total{outcome=\"failure\"} 0"));
     }
 }

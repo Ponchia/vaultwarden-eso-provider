@@ -70,6 +70,27 @@ jobs:
           --set-string 'hostAliases[0].ip=10.43.186.117'
           --set-string 'hostAliases[0].hostnames[0]=vaultwarden.example.com'
 
+      - name: Render chart with ConfigMap-backed selector policy
+        run: >
+          helm template bweso deploy/helm/vaultwarden-eso-provider
+          -f deploy/helm/lint-values.yaml
+          --namespace bweso-system
+          --set-string 'selectorPolicy.configMap.name=bweso-selector-policy'
+          --set-string 'selectorPolicy.configMap.keys.allowedKeyPrefixes=allowed-key-prefixes'
+          | grep -q 'BWESO_ALLOWED_KEYS_FILE'
+
+      - name: Selector-policy ConfigMap guard fails without keys
+        run: |
+          if helm template bweso deploy/helm/vaultwarden-eso-provider \
+            -f deploy/helm/lint-values.yaml \
+            --namespace bweso-system \
+            --set-string 'selectorPolicy.configMap.name=bweso-selector-policy' \
+            --set-string 'selectorPolicy.configMap.keys.allowedKeys=' \
+            >/dev/null 2>&1; then
+            echo "expected helm render to fail when configMap.name is set with no keys" >&2
+            exit 1
+          fi
+
       - name: Render chart with ServiceMonitor
         run: >
           helm template bweso deploy/helm/vaultwarden-eso-provider

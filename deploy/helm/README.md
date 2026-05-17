@@ -16,7 +16,9 @@ The default chart shape is intentionally small:
   rendering when Prometheus Operator CRDs are installed.
 - Webhook bearer-token authentication enabled by default.
 - Optional provider-side selector policy with exact `remoteRef.key` allowlists
-  and prefix allowlists.
+  and prefix allowlists, either inline or sourced from a hot-reloadable
+  ConfigMap (`selectorPolicy.configMap`) so onboarding needs no provider
+  restart.
 - Baseline resource requests/limits and seccomp by default.
 - Optional NetworkPolicy rendering. Enable it only after adapting ingress and
   egress rules to your ESO, DNS, Bitwarden Cloud, or Vaultwarden path.

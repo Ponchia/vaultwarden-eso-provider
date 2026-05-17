@@ -1,6 +1,6 @@
 [package]
 name = "vaultwarden-eso-provider"
-version = "0.2.0"
+version = "0.2.1"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -29,8 +29,8 @@ tower-http.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 url.workspace = true
-bweso-core = { version = "0.2.0", path = "../bweso-core" }
-bweso-bitwarden = { version = "0.2.0", path = "../bweso-bitwarden" }
+bweso-core = { version = "0.2.1", path = "../bweso-core" }
+bweso-bitwarden = { version = "0.2.1", path = "../bweso-bitwarden" }
 
 [dev-dependencies]
 async-trait.workspace = true

@@ -94,6 +94,27 @@ struct Args {
         value_name = "PREFIX"
     )]
     allowed_key_prefixes: Vec<String>,
+    /// File listing additional allowed exact selector keys, one entry per line
+    /// (commas also split; blank lines and `#` comments are ignored). Entries
+    /// are unioned with `--allowed-key`. When set, the file is re-read on the
+    /// reload interval so a mounted `ConfigMap` can change the policy without a
+    /// provider restart.
+    #[arg(long, env = "BWESO_ALLOWED_KEYS_FILE")]
+    allowed_keys_file: Option<PathBuf>,
+    /// File listing additional allowed selector key prefixes. Same format and
+    /// reload semantics as `--allowed-keys-file`; entries are unioned with
+    /// `--allowed-key-prefix`.
+    #[arg(long, env = "BWESO_ALLOWED_KEY_PREFIXES_FILE")]
+    allowed_key_prefixes_file: Option<PathBuf>,
+    /// How often to re-read the policy files, in seconds. `0` disables
+    /// reloading (the files are still read once at startup). Ignored when no
+    /// policy file is configured.
+    #[arg(
+        long,
+        env = "BWESO_POLICY_RELOAD_INTERVAL_SECONDS",
+        default_value_t = 30
+    )]
+    policy_reload_interval_seconds: u64,
     #[arg(long, env = "BWESO_HTTP_CONNECT_TIMEOUT_SECONDS", default_value_t = 5)]
     http_connect_timeout_seconds: u64,
     #[arg(long, env = "BWESO_HTTP_REQUEST_TIMEOUT_SECONDS", default_value_t = 25)]
@@ -171,6 +192,25 @@ async fn main() -> anyhow::Result<()> {
         resolve_semaphore,
     };
 
+    // Seed policy gauges from the startup evaluation so a file-backed policy
+    // is observable from t0 — including reloadIntervalSeconds:0 (no task) and
+    // the warm-up window before the first reload tick.
+    if state.selector_policy.sources.has_file() {
+        let rules = state.selector_policy.snapshot();
+        state
+            .metrics
+            .record_policy_baseline(rules.allowed_keys.len(), rules.allowed_key_prefixes.len());
+    }
+
+    // The task observes shutdown via Lifecycle and is reaped on runtime drop;
+    // no handle to retain here.
+    let _ = spawn_policy_reload(
+        state.selector_policy.clone(),
+        lifecycle.clone(),
+        state.metrics.clone(),
+        args.policy_reload_interval_seconds,
+    );
+
     let app = build_router(state);
 
     let listener = tokio::net::TcpListener::bind(listen).await?;
@@ -183,24 +223,19 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Immutable evaluated allow-list. An empty rule set allows every selector,
+/// preserving the original "nothing configured means allow all" behavior.
+/// This allow-all-on-empty is only ever reached when NO policy source is
+/// configured: [`PolicySources::evaluate`] rejects an empty result whenever a
+/// file source is configured, so an emptied/comment-only `ConfigMap` cannot
+/// silently widen access to every item.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-struct SelectorPolicy {
-    allowed_keys: Arc<Vec<String>>,
-    allowed_key_prefixes: Arc<Vec<String>>,
+struct PolicyRules {
+    allowed_keys: Vec<String>,
+    allowed_key_prefixes: Vec<String>,
 }
 
-impl SelectorPolicy {
-    fn from_args(args: &Args) -> anyhow::Result<Self> {
-        let allowed_keys = normalize_policy_entries(&args.allowed_keys, "allowed_key")?;
-        let allowed_key_prefixes =
-            normalize_policy_entries(&args.allowed_key_prefixes, "allowed_key_prefix")?;
-
-        Ok(Self {
-            allowed_keys: Arc::new(allowed_keys),
-            allowed_key_prefixes: Arc::new(allowed_key_prefixes),
-        })
-    }
-
+impl PolicyRules {
     fn allows(&self, key: &str) -> bool {
         if self.allowed_keys.is_empty() && self.allowed_key_prefixes.is_empty() {
             return true;
@@ -216,6 +251,126 @@ impl SelectorPolicy {
     }
 }
 
+/// Sources the policy is built from. Inline entries come from flags/env and are
+/// fixed for the process lifetime; file entries are re-read on the reload
+/// interval so a mounted `ConfigMap` can change the policy without a restart.
+#[derive(Clone, Debug, Default)]
+struct PolicySources {
+    inline_keys: Vec<String>,
+    inline_key_prefixes: Vec<String>,
+    keys_file: Option<PathBuf>,
+    key_prefixes_file: Option<PathBuf>,
+}
+
+impl PolicySources {
+    fn has_file(&self) -> bool {
+        self.keys_file.is_some() || self.key_prefixes_file.is_some()
+    }
+
+    /// Re-read the file sources and union them with the inline entries.
+    /// Inline entries are validated once (at startup) via [`SelectorPolicy::from_args`].
+    fn evaluate(&self) -> anyhow::Result<PolicyRules> {
+        let mut allowed_keys = self.inline_keys.clone();
+        if let Some(path) = &self.keys_file {
+            allowed_keys.extend(read_policy_file(path, "allowed_key")?);
+        }
+        let mut allowed_key_prefixes = self.inline_key_prefixes.clone();
+        if let Some(path) = &self.key_prefixes_file {
+            allowed_key_prefixes.extend(read_policy_file(path, "allowed_key_prefix")?);
+        }
+
+        // A file source is an explicit intent to run an allow-list. If it
+        // evaluates to zero entries (empty, comment-only, or accidentally
+        // emptied by a bad GitOps render), DO NOT fall back to the
+        // "empty == allow all" legacy behavior — that would silently widen
+        // access to every item visible to the provider account, on the
+        // no-restart hot path. Erroring here makes startup fail fast and makes
+        // a reload keep the last known-good policy (fail to last-good).
+        if self.has_file() && allowed_keys.is_empty() && allowed_key_prefixes.is_empty() {
+            bail!(
+                "selector policy file source is configured but evaluated to zero entries; \
+                 refusing to fall back to allow-all"
+            );
+        }
+
+        Ok(PolicyRules {
+            allowed_keys,
+            allowed_key_prefixes,
+        })
+    }
+}
+
+/// Hot-swappable selector policy. Reads take a short read lock and clone the
+/// shared `Arc`; reloads swap the `Arc` under a brief write lock. No new
+/// dependency: the read path is uncontended in steady state and the swap is
+/// rare (reload interval, default 30s).
+#[derive(Clone)]
+struct SelectorPolicy {
+    rules: Arc<std::sync::RwLock<Arc<PolicyRules>>>,
+    sources: Arc<PolicySources>,
+}
+
+impl Default for SelectorPolicy {
+    fn default() -> Self {
+        Self::from_rules(PolicyRules::default(), PolicySources::default())
+    }
+}
+
+impl SelectorPolicy {
+    fn from_rules(rules: PolicyRules, sources: PolicySources) -> Self {
+        Self {
+            rules: Arc::new(std::sync::RwLock::new(Arc::new(rules))),
+            sources: Arc::new(sources),
+        }
+    }
+
+    fn from_args(args: &Args) -> anyhow::Result<Self> {
+        let sources = PolicySources {
+            inline_keys: normalize_policy_entries(&args.allowed_keys, "allowed_key")?,
+            inline_key_prefixes: normalize_policy_entries(
+                &args.allowed_key_prefixes,
+                "allowed_key_prefix",
+            )?,
+            keys_file: args.allowed_keys_file.clone(),
+            key_prefixes_file: args.allowed_key_prefixes_file.clone(),
+        };
+        // Fail fast at startup if a configured file is unreadable or invalid.
+        let rules = sources.evaluate()?;
+        Ok(Self::from_rules(rules, sources))
+    }
+
+    fn allows(&self, key: &str) -> bool {
+        let snapshot = self.snapshot();
+        snapshot.allows(key)
+    }
+
+    fn snapshot(&self) -> Arc<PolicyRules> {
+        // The read/write critical sections are panic-free (Arc clone / assign),
+        // so recovering a poisoned guard is sound and avoids a panic path.
+        let guard = self
+            .rules
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        Arc::clone(&guard)
+    }
+
+    /// Re-evaluate the sources and swap the active rules in place. Returns
+    /// whether the effective policy changed. Never logs selector keys.
+    fn reload(&self) -> anyhow::Result<bool> {
+        let next = self.sources.evaluate()?;
+        let current = self.snapshot();
+        if *current == next {
+            return Ok(false);
+        }
+        let mut guard = self
+            .rules
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        *guard = Arc::new(next);
+        Ok(true)
+    }
+}
+
 fn normalize_policy_entries(entries: &[String], name: &'static str) -> anyhow::Result<Vec<String>> {
     let mut normalized = Vec::with_capacity(entries.len());
     for entry in entries {
@@ -225,6 +380,111 @@ fn normalize_policy_entries(entries: &[String], name: &'static str) -> anyhow::R
     }
 
     Ok(normalized)
+}
+
+/// Upper bound on a policy file. A Kubernetes `ConfigMap` is itself capped near
+/// 1 MiB; this is a defensive ceiling for the generic file path so an
+/// unexpected large/non-`ConfigMap` file cannot be slurped wholesale on every
+/// reload.
+const MAX_POLICY_FILE_BYTES: u64 = 4 * 1024 * 1024;
+
+/// Parse a policy file: one entry per line, commas also split, surrounding
+/// whitespace trimmed, blank lines and `#` comment lines ignored.
+fn read_policy_file(path: &Path, name: &'static str) -> anyhow::Result<Vec<String>> {
+    let metadata = fs::metadata(path)
+        .with_context(|| format!("failed to stat {name}_file {}", path.display()))?;
+    if metadata.len() > MAX_POLICY_FILE_BYTES {
+        bail!(
+            "{name}_file {} is {} bytes, exceeding the {} byte limit",
+            path.display(),
+            metadata.len(),
+            MAX_POLICY_FILE_BYTES
+        );
+    }
+    let contents = fs::read_to_string(path)
+        .with_context(|| format!("failed to read {name}_file {}", path.display()))?;
+    let mut entries = Vec::new();
+    for line in contents.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        for raw in line.split(',') {
+            let entry = raw.trim();
+            if entry.is_empty() {
+                continue;
+            }
+            entries.push(entry.to_string());
+        }
+    }
+
+    Ok(entries)
+}
+
+/// Spawn the background task that periodically re-reads file-backed policy
+/// sources and hot-swaps the active rules. Returns `None` (and spawns no task)
+/// when no policy file is configured or the interval is `0`; in those cases the
+/// policy stays exactly as evaluated at startup. The task exits promptly on
+/// shutdown via [`Lifecycle::shutdown_requested`], not only on its next tick.
+fn spawn_policy_reload(
+    policy: SelectorPolicy,
+    lifecycle: Lifecycle,
+    metrics: Arc<AppMetrics>,
+    interval_seconds: u64,
+) -> Option<tokio::task::JoinHandle<()>> {
+    if !policy.sources.has_file() {
+        return None;
+    }
+    if interval_seconds == 0 {
+        tracing::info!("policy file reload disabled (interval 0); policy is fixed at startup");
+        return None;
+    }
+
+    Some(tokio::spawn(async move {
+        let mut ticker = tokio::time::interval(Duration::from_secs(interval_seconds));
+        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        // First tick fires immediately; the startup evaluation already loaded
+        // the files, so skip it and wait one interval before re-reading.
+        ticker.tick().await;
+        loop {
+            tokio::select! {
+                _ = ticker.tick() => {}
+                () = lifecycle.shutdown_requested() => break,
+            }
+            // Covers the rare case where the tick and shutdown race and the
+            // tick wins the select.
+            if !lifecycle.is_ready() {
+                break;
+            }
+            let outcome = match policy.reload() {
+                Ok(true) => {
+                    let rules = policy.snapshot();
+                    // Counts only — never log selector keys or prefixes.
+                    tracing::info!(
+                        allowed_keys = rules.allowed_keys.len(),
+                        allowed_key_prefixes = rules.allowed_key_prefixes.len(),
+                        "selector policy reloaded"
+                    );
+                    "success"
+                }
+                Ok(false) => "unchanged",
+                Err(error) => {
+                    // Keep serving the last good policy on a transient read or
+                    // validation failure. Redacted: errors carry paths, not keys.
+                    tracing::warn!(error = %error, "selector policy reload failed; keeping previous policy");
+                    "failure"
+                }
+            };
+            // Active counts reflect the currently-served policy (last-good on
+            // failure). Counts only — never the selector keys themselves.
+            let active = policy.snapshot();
+            metrics.record_policy_reload(
+                outcome,
+                active.allowed_keys.len(),
+                active.allowed_key_prefixes.len(),
+            );
+        }
+    }))
 }
 
 fn run_healthcheck(raw_url: &str) -> anyhow::Result<()> {
@@ -884,6 +1144,9 @@ mod tests {
             cache_ttl_seconds: 60,
             allowed_keys: Vec::new(),
             allowed_key_prefixes: Vec::new(),
+            allowed_keys_file: None,
+            allowed_key_prefixes_file: None,
+            policy_reload_interval_seconds: 30,
             http_connect_timeout_seconds: 5,
             http_request_timeout_seconds: 25,
             ca_bundle_file: None,
@@ -1056,6 +1319,230 @@ mod tests {
         };
 
         assert!(error.to_string().contains("allowed_key must not be empty"));
+    }
+
+    /// Unique temp file that removes itself on drop, so a panicking assertion
+    /// never leaks a file into the temp dir.
+    struct TempPolicyFile {
+        path: PathBuf,
+    }
+
+    impl TempPolicyFile {
+        fn new(tag: &str) -> Self {
+            use std::sync::atomic::{AtomicU64, Ordering};
+            static COUNTER: AtomicU64 = AtomicU64::new(0);
+            let unique = COUNTER.fetch_add(1, Ordering::Relaxed);
+            let path = std::env::temp_dir().join(format!(
+                "bweso-policy-{}-{}-{tag}.txt",
+                std::process::id(),
+                unique
+            ));
+            Self { path }
+        }
+
+        fn write(&self, contents: &str) -> std::io::Result<()> {
+            fs::write(&self.path, contents)
+        }
+
+        fn remove(&self) {
+            fs::remove_file(&self.path).ok();
+        }
+
+        fn path(&self) -> PathBuf {
+            self.path.clone()
+        }
+    }
+
+    impl Drop for TempPolicyFile {
+        fn drop(&mut self) {
+            fs::remove_file(&self.path).ok();
+        }
+    }
+
+    #[test]
+    fn selector_policy_reads_and_unions_file_entries() -> TestResult {
+        let file = TempPolicyFile::new("union");
+        file.write("# managed by GitOps\nid:from-file\n\n  id:also-file  ,id:csv-file\n")?;
+        let mut args = valid_args();
+        args.allowed_keys = vec!["id:from-inline".to_string()];
+        args.allowed_keys_file = Some(file.path());
+
+        let policy = SelectorPolicy::from_args(&args)?;
+
+        assert!(policy.allows("id:from-inline"));
+        assert!(policy.allows("id:from-file"));
+        assert!(policy.allows("id:also-file"));
+        assert!(policy.allows("id:csv-file"));
+        assert!(!policy.allows("id:not-listed"));
+        Ok(())
+    }
+
+    #[test]
+    fn selector_policy_reload_picks_up_file_changes_without_restart() -> TestResult {
+        let file = TempPolicyFile::new("reload");
+        file.write("id:initial\n")?;
+        let mut args = valid_args();
+        args.allowed_keys_file = Some(file.path());
+
+        let policy = SelectorPolicy::from_args(&args)?;
+        assert!(policy.allows("id:initial"));
+        assert!(!policy.allows("id:added-later"));
+
+        // Simulate a ConfigMap update landing on the mounted file.
+        file.write("id:initial\nid:added-later\n")?;
+        assert!(policy.reload()?, "policy should report a change");
+        assert!(policy.allows("id:added-later"));
+        assert!(policy.allows("id:initial"));
+
+        // A reload with no on-disk change reports no change.
+        assert!(!policy.reload()?, "unchanged file should not swap");
+        Ok(())
+    }
+
+    #[test]
+    fn selector_policy_from_args_fails_when_file_missing() {
+        let missing = TempPolicyFile::new("missing");
+        let mut args = valid_args();
+        args.allowed_keys_file = Some(missing.path());
+
+        let Some(error) = SelectorPolicy::from_args(&args).err() else {
+            unreachable!("missing policy file should fail at startup");
+        };
+
+        assert!(error
+            .to_string()
+            .contains("failed to stat allowed_key_file"));
+    }
+
+    #[test]
+    fn selector_policy_reload_keeps_previous_on_invalid_file() -> TestResult {
+        let file = TempPolicyFile::new("invalid");
+        file.write("id:good\n")?;
+        let mut args = valid_args();
+        args.allowed_key_prefixes_file = Some(file.path());
+
+        let policy = SelectorPolicy::from_args(&args)?;
+        assert!(policy.allows("id:good/db"));
+
+        // Removing the file makes the next reload error; the live policy must
+        // keep serving the last good rules instead of failing open or closed.
+        file.remove();
+        assert!(policy.reload().is_err());
+        assert!(policy.allows("id:good/db"));
+        Ok(())
+    }
+
+    #[test]
+    fn selector_policy_has_no_file_when_unconfigured() -> TestResult {
+        let policy = SelectorPolicy::from_args(&valid_args())?;
+        assert!(!policy.sources.has_file());
+        Ok(())
+    }
+
+    #[test]
+    fn selector_policy_from_args_fails_when_configured_file_is_empty() -> TestResult {
+        let file = TempPolicyFile::new("empty");
+        // Comment- and blank-only: a configured allow-list that evaluates to
+        // zero entries must NOT fall back to allow-all.
+        file.write("# only comments\n\n   \n")?;
+        let mut args = valid_args();
+        args.allowed_keys_file = Some(file.path());
+
+        let result = SelectorPolicy::from_args(&args);
+
+        let Some(error) = result.err() else {
+            unreachable!("configured-empty policy file must fail fast at startup");
+        };
+        assert!(error
+            .to_string()
+            .contains("refusing to fall back to allow-all"));
+        Ok(())
+    }
+
+    #[test]
+    fn selector_policy_reload_rejects_emptying_a_file() -> TestResult {
+        let file = TempPolicyFile::new("emptied");
+        file.write("id:restricted\n")?;
+        let mut args = valid_args();
+        args.allowed_keys_file = Some(file.path());
+
+        let policy = SelectorPolicy::from_args(&args)?;
+        assert!(policy.allows("id:restricted"));
+        assert!(!policy.allows("id:anything-else"));
+
+        // Simulate a bad GitOps render that empties the ConfigMap. The reload
+        // must error (keeping last-known-good), NOT swap in an allow-all.
+        file.write("# emptied by mistake\n")?;
+        assert!(policy.reload().is_err());
+        assert!(policy.allows("id:restricted"));
+        assert!(
+            !policy.allows("id:anything-else"),
+            "an emptied policy file must not widen to allow-all"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn selector_policy_rejects_oversized_file() -> TestResult {
+        let file = TempPolicyFile::new("oversize");
+        let over = usize::try_from(MAX_POLICY_FILE_BYTES)
+            .unwrap_or(usize::MAX)
+            .saturating_add(1);
+        let mut content = String::from("id:ok\n");
+        content.push_str(&"#".repeat(over));
+        file.write(&content)?;
+        let mut args = valid_args();
+        args.allowed_keys_file = Some(file.path());
+
+        let Some(error) = SelectorPolicy::from_args(&args).err() else {
+            unreachable!("oversized policy file must be rejected");
+        };
+        assert!(error.to_string().contains("exceeding the"));
+        Ok(())
+    }
+
+    #[test]
+    fn policy_reload_disabled_when_interval_zero() -> TestResult {
+        let file = TempPolicyFile::new("interval0");
+        file.write("id:only\n")?;
+        let mut args = valid_args();
+        args.allowed_keys_file = Some(file.path());
+
+        let policy = SelectorPolicy::from_args(&args)?;
+        let metrics = Arc::new(AppMetrics::new());
+        let handle = spawn_policy_reload(policy, Lifecycle::default(), metrics, 0);
+
+        assert!(
+            handle.is_none(),
+            "interval 0 must not spawn a reload task (policy stays as evaluated at startup)"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn policy_reload_task_stops_promptly_on_shutdown() -> TestResult {
+        let file = TempPolicyFile::new("shutdown");
+        file.write("id:initial\n")?;
+        let mut args = valid_args();
+        args.allowed_keys_file = Some(file.path());
+
+        let policy = SelectorPolicy::from_args(&args)?;
+        let lifecycle = Lifecycle::default();
+        // Huge interval: the task is parked on the tick. It must still exit
+        // because of the shutdown signal, not the timer.
+        let metrics = Arc::new(AppMetrics::new());
+        let Some(handle) = spawn_policy_reload(policy, lifecycle.clone(), metrics, 3_600) else {
+            unreachable!("a file source is configured, so a task must spawn");
+        };
+
+        lifecycle.mark_shutting_down();
+        let joined = tokio::time::timeout(Duration::from_secs(5), handle).await;
+
+        let Ok(join_result) = joined else {
+            unreachable!("reload task did not exit promptly on shutdown");
+        };
+        join_result?;
+        Ok(())
     }
 
     #[test]
@@ -1519,10 +2006,13 @@ mod tests {
     #[tokio::test]
     async fn resolve_rejects_selector_denied_by_policy_without_leaking_key() -> TestResult {
         let mut state = test_state(Arc::new(StaticProvider));
-        state.selector_policy = SelectorPolicy {
-            allowed_keys: Arc::new(vec!["id:allowed".to_string()]),
-            allowed_key_prefixes: Arc::new(Vec::new()),
-        };
+        state.selector_policy = SelectorPolicy::from_rules(
+            PolicyRules {
+                allowed_keys: vec!["id:allowed".to_string()],
+                allowed_key_prefixes: Vec::new(),
+            },
+            PolicySources::default(),
+        );
         let app = build_router(state);
 
         let response = app

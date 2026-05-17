@@ -95,6 +95,21 @@ spec:
             - name: BWESO_ALLOWED_KEY_PREFIXES
               value: {{ join "," .Values.selectorPolicy.allowedKeyPrefixes | quote }}
             {{- end }}
+            {{- if .Values.selectorPolicy.configMap.name }}
+            {{- if not (or .Values.selectorPolicy.configMap.keys.allowedKeys .Values.selectorPolicy.configMap.keys.allowedKeyPrefixes) }}
+            {{- fail "selectorPolicy.configMap.name is set but neither configMap.keys.allowedKeys nor configMap.keys.allowedKeyPrefixes is configured; the provider would have no policy file to read" }}
+            {{- end }}
+            {{- if .Values.selectorPolicy.configMap.keys.allowedKeys }}
+            - name: BWESO_ALLOWED_KEYS_FILE
+              value: /etc/bweso/policy/{{ .Values.selectorPolicy.configMap.keys.allowedKeys }}
+            {{- end }}
+            {{- if .Values.selectorPolicy.configMap.keys.allowedKeyPrefixes }}
+            - name: BWESO_ALLOWED_KEY_PREFIXES_FILE
+              value: /etc/bweso/policy/{{ .Values.selectorPolicy.configMap.keys.allowedKeyPrefixes }}
+            {{- end }}
+            - name: BWESO_POLICY_RELOAD_INTERVAL_SECONDS
+              value: {{ .Values.selectorPolicy.reloadIntervalSeconds | quote }}
+            {{- end }}
             {{- if or .Values.caBundle.pem .Values.caBundle.existingSecret.name }}
             - name: BWESO_CA_BUNDLE_FILE
               value: /var/run/secrets/bweso-ca/{{ .Values.caBundle.existingSecret.key | default "ca.pem" }}
@@ -127,11 +142,22 @@ spec:
               mountPath: /var/run/secrets/bweso-ca
               readOnly: true
             {{- end }}
+            {{- if .Values.selectorPolicy.configMap.name }}
+            - name: selector-policy
+              mountPath: /etc/bweso/policy
+              readOnly: true
+            {{- end }}
       volumes:
         - name: credentials
           secret:
             secretName: {{ include "bweso.credentialsSecretName" . }}
             defaultMode: 0400
+        {{- if .Values.selectorPolicy.configMap.name }}
+        - name: selector-policy
+          configMap:
+            name: {{ .Values.selectorPolicy.configMap.name }}
+            defaultMode: 0444
+        {{- end }}
         {{- if or .Values.caBundle.pem .Values.caBundle.existingSecret.name }}
         - name: ca-bundle
           secret:
