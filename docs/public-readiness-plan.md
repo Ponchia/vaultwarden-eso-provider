@@ -1,24 +1,23 @@
 # Release Readiness Plan
 
 This file records the release-readiness decisions for Vaultwarden ESO Provider.
-`v0.1.3` is public, so this document now describes the current baseline and the
-rules for future releases.
+`v0.2.1` is public, so this document separates the current published baseline
+from the rules and automation for future releases.
 
 ## Product Shape
 
 The project is an External Secrets Operator webhook provider for
 **Vaultwarden** (and self-hosted Bitwarden Password Manager), with Bitwarden
 Cloud Password Manager as a secondary supported target. Bitwarden Secrets
-Manager is out of scope and is not implemented by Vaultwarden in any case.
-The repository will be renamed to `vaultwarden-eso-provider` at `v0.2` (see
-[roadmap.md](roadmap.md)); `v0.1.x` artifacts are being removed as part of
-that rename and are not preserved for compatibility.
+Manager is out of scope and is not implemented by Vaultwarden in any case. The
+repository, chart, image, and binary have already been renamed to
+`vaultwarden-eso-provider` in the `v0.2` release line.
 
-Do not build a native Kubernetes operator during the `v0.1.x` release line. ESO
-already owns refresh intervals, target `Secret` lifecycle, deletion behavior,
-status conditions, and GitOps integration. A native operator, native ESO
-provider, Secrets Store CSI provider, and PushSecret support are later roadmap
-items.
+Do not build a native Kubernetes operator during the pre-`v1.0.0` release line.
+ESO already owns refresh intervals, target `Secret` lifecycle, deletion
+behavior, status conditions, and GitOps integration. A native operator, native
+ESO provider, Secrets Store CSI provider, and PushSecret support are later
+roadmap items.
 
 ## Required For Public Releases
 
@@ -30,9 +29,12 @@ items.
   unprefixed keys are rejected with `400 validation`. Recommend `id:` in
   production.
 - Enforce optional provider-side selector policy with exact raw keys and raw key
-  prefixes. Empty policy allows all keys visible to the configured account;
-  configured policy denies every non-matching key with a redacted `403`.
-  Document that the policy is item-key scoped, not property scoped.
+  prefixes. Empty policy requires an explicit allow-all escape hatch; configured
+  policy denies every non-matching key with a redacted `403`. Document that the
+  policy is item-key scoped, not property scoped.
+- Support ConfigMap-backed selector policy hot reload without fail-open behavior.
+- Support custom CA bundles that supplement the bundled WebPKI roots.
+- Shed excess concurrent `/v1/resolve` requests with a global concurrency cap.
 - Fail selected shared organization items explicitly until organization-key
   decryption is implemented and live-tested.
 - Fail `attachment.` and `attachments.` properties explicitly until attachment
@@ -52,31 +54,35 @@ items.
   Bitwarden login fields such as `username` and `password`.
 - Document intentional empty target keys as ESO template data with
   `mergePolicy: Merge`.
-- Keep chart NetworkPolicy opt-in for `v0.1.x`; backend, DNS, ESO, and
-  Prometheus reachability is cluster-specific and a too-generic default can
-  break first installs.
+- Keep chart NetworkPolicy opt-in; backend, DNS, ESO, and Prometheus reachability
+  is cluster-specific. When enabled, default to deny-all until rules are supplied.
 - Publish the packaged Helm chart to GHCR as an OCI chart and attach the same
   chart archive to tagged GitHub Releases after the release image manifest has
-  been built and scanned.
+  been built, scanned, signed, and attested.
 
 ## Current Validation Baseline
 
-The public `v0.1.3` baseline has been validated with:
+The repository baseline is validated with:
 
 - CI gates for formatting, clippy, tests with coverage, Helm rendering,
   markdown linting, observability examples, Gitleaks, Trivy filesystem scanning,
   cargo-deny, Checkov, and Dockerfile build checks.
 - CodeQL code scanning for Rust and GitHub Actions workflow files.
+- OpenSSF Scorecard runs on `main` and publishes SARIF/code-scanning results.
 - Local advisory scans used during release review, including Semgrep and
   SonarQube where available. These are review tools unless they are present in
   the GitHub workflow for that commit.
 - `scripts/live-eso-smoke.sh` against Vaultwarden on a k3s cluster with
-  selector policy enabled.
+  selector policy enabled for the `v0.1.3` backend path; `v0.2.x` keeps that
+  protocol path and adds automated coverage for the new runtime controls.
 - `scripts/live-eso-smoke.sh` against Bitwarden Cloud with selector policy
   enabled for the `v0.1.1` runtime path; releases without provider protocol
   changes may reuse that evidence.
-- A tagged GitHub Release that publishes a multi-arch image, a GHCR OCI Helm
-  chart, and a packaged Helm chart archive from the release commit.
+- The current release workflow publishes a multi-arch image, a GHCR OCI Helm
+  chart, a packaged Helm chart archive, generated release notes, keyless
+  Sigstore signatures, and GitHub artifact attestations from the release commit.
+  Do not assume older tags have every evidence artifact unless the exact GitHub
+  Release notes list it.
 - Public repository controls for branch protection, tag protection, secret
   scanning, Dependabot alerts, security policy, issue templates, and CODEOWNERS.
 
@@ -97,12 +103,16 @@ For each release:
 - Run the release workflow from the exact tag or commit being released.
 - Confirm the release OCI chart and attached chart artifact are published only
   after the image manifest and release image scan succeed.
+- Confirm image and chart verification commands in
+  [`release-verification.md`](release-verification.md) work for the published
+  evidence.
 - Run live smoke tests against Vaultwarden and Bitwarden Cloud with selector
   policy enabled when provider runtime behavior changes. Packaging-only releases
   may reuse prior backend live evidence if fake-server coverage and the changed
   packaging path are both verified.
-- Record the image index digest and chart checksum in the GitHub Release notes.
-  Generated artifact hashes should not require a follow-up commit after tagging.
+- Record the image index digest, chart checksum, signature, and attestation
+  evidence in the GitHub Release notes. Generated artifact hashes should not
+  require a follow-up commit after tagging.
 
 ## Deferred
 

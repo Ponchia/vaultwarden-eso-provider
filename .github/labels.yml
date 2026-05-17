@@ -1,0 +1,36 @@
+- name: breaking-change
+  color: b60205
+  description: Breaking change or migration required.
+- name: security
+  color: ee0701
+  description: Security hardening, vulnerability handling, or trust boundary work.
+- name: feature
+  color: 0e8a16
+  description: User-facing capability or supported workflow.
+- name: enhancement
+  color: a2eeef
+  description: Improvement to existing behavior.
+- name: bug
+  color: d73a4a
+  description: Defect fix.
+- name: devops
+  color: 5319e7
+  description: CI, release, packaging, GitOps, or repository automation.
+- name: ci
+  color: 5319e7
+  description: Continuous integration workflow change.
+- name: release
+  color: 0052cc
+  description: Release process, versioning, signing, or changelog work.
+- name: documentation
+  color: 0075ca
+  description: Documentation-only change.
+- name: dependencies
+  color: 0366d6
+  description: Dependency update.
+- name: question
+  color: d876e3
+  description: Support or usage question.
+- name: skip-changelog
+  color: cfd3d7
+  description: Exclude from generated release notes.

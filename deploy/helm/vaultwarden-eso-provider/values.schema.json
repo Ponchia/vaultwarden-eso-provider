@@ -227,6 +227,9 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
+        "allowAllSelectors": {
+          "type": "boolean"
+        },
         "allowedKeys": {
           "type": "array",
           "items": {

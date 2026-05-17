@@ -45,23 +45,24 @@ Add **optional file-backed policy sources that are re-read at runtime**:
   (`RwLock<Arc<PolicyRules>>`, no new dependency). A background task
   re-evaluates the file sources on the interval and atomically swaps the
   active rules only when they change.
-- The task is spawned only when a file source is configured; otherwise
-  behavior is byte-for-byte unchanged (single startup evaluation). The
-  task exits promptly on shutdown via a `Lifecycle` notification
+- The task is spawned only when a file source is configured; otherwise the
+  policy still uses a single startup evaluation. The task exits promptly on
+  shutdown via a `Lifecycle` notification
   (`tokio::select!` on the tick vs. a shutdown signal), not only on its
   next tick.
 - Configured-but-unreadable/invalid files fail fast at startup; a
   transient failure during a later reload is logged and the last
   known-good policy keeps serving (fail to last-good, not open/closed).
-- **Configured-empty is not allow-all.** The legacy "empty rule set ⇒
-  allow all" applies only when *no* policy source is configured. When a
-  file source is configured and the **effective** policy (inline entries
-  plus every file) yields zero entries — empty/comment-only file, or a
-  ConfigMap emptied by a bad GitOps render — it is an error: fail fast at
-  startup, fail to last-good on reload, never silently widen to allow-all
-  on the no-restart path. If inline entries are also configured, an
-  emptied file narrows to the inline baseline (still never wider) instead
-  of erroring; this is the safe direction and is the documented contract.
+- **Configured-empty is not allow-all.** Running with no selector policy now
+  requires an explicit `BWESO_ALLOW_ALL_SELECTORS=true` /
+  `selectorPolicy.allowAllSelectors=true` opt-in. When a file source is
+  configured and the **effective** policy (inline entries plus every file)
+  yields zero entries — empty/comment-only file, or a ConfigMap emptied by a bad
+  GitOps render — it is an error: fail fast at startup, fail to last-good on
+  reload, never silently widen to allow-all on the no-restart path. If inline
+  entries are also configured, an emptied file narrows to the inline baseline
+  (still never wider) instead of erroring; this is the safe direction and is the
+  documented contract.
 - **Policy metrics are seeded at startup**, so a file-backed policy is
   observable from `t0` — including `reloadIntervalSeconds: 0` (no reload
   task) and the warm-up window before the first tick. The reload counter
@@ -74,8 +75,8 @@ Add **optional file-backed policy sources that are re-read at runtime**:
 
 - Removes the missed-restart failure mode: ConfigMap-driven onboarding
   becomes pure GitOps, applied within one interval with no restart.
-- Conservative by default: no file ⇒ no task ⇒ identical behavior, so
-  existing deployments are unaffected and the security posture is unchanged.
+- Conservative by default: no file ⇒ no task; no policy source requires an
+  explicit allow-all opt-in.
 - No new dependency. The read path stays a cheap uncontended `Arc` clone;
   swaps are rare (reload interval).
 - Redaction preserved: reload logs counts only, never selector keys, and

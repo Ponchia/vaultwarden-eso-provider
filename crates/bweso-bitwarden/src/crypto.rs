@@ -8,7 +8,7 @@ use cbc::cipher::{block_padding::Pkcs7, BlockDecryptMut, KeyIvInit};
 use hmac::{Hmac, KeyInit, Mac};
 use sha2::Sha256;
 use thiserror::Error;
-use zeroize::Zeroize;
+use zeroize::{Zeroize, Zeroizing};
 
 type Aes256CbcDecryptor = cbc::Decryptor<Aes256>;
 type HmacSha256 = Hmac<Sha256>;
@@ -42,7 +42,11 @@ impl EncryptedString {
     /// or the plaintext is not valid UTF-8.
     pub fn decrypt_utf8(&self, key: &AuthenticatedSymmetricKey) -> Result<String, CryptoError> {
         let plain = self.decrypt_bytes(key)?;
-        String::from_utf8(plain).map_err(|source| CryptoError::InvalidUtf8 { source })
+        String::from_utf8(plain).map_err(|source| {
+            let mut bytes = source.into_bytes();
+            bytes.zeroize();
+            CryptoError::InvalidUtf8
+        })
     }
 
     /// Decrypt the encrypted string to raw bytes.
@@ -59,7 +63,7 @@ impl EncryptedString {
 
         verify_mac(key.authentication_key(), &self.iv, &self.data, &self.mac)?;
 
-        let mut data = self.data.clone();
+        let mut data = Zeroizing::new(self.data.clone());
         let decrypted =
             Aes256CbcDecryptor::new(key.encryption_key().into(), self.iv.as_slice().into())
                 .decrypt_padded_mut::<Pkcs7>(&mut data)
@@ -271,11 +275,7 @@ pub enum CryptoError {
     DecryptFailed,
     /// Plaintext was not valid UTF-8.
     #[error("decrypted value is not valid UTF-8")]
-    InvalidUtf8 {
-        /// UTF-8 decoder source error.
-        #[source]
-        source: std::string::FromUtf8Error,
-    },
+    InvalidUtf8,
 }
 
 fn decode_base64(part: &'static str, raw: &str) -> Result<Vec<u8>, CryptoError> {

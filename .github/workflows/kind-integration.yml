@@ -89,7 +89,7 @@ jobs:
         run: |
           kubectl -n vaultwarden port-forward svc/vaultwarden 18080:80 &
           PF_PID=$!
-          trap "kill $PF_PID" EXIT
+          trap 'kill "$PF_PID"' EXIT
           for _ in $(seq 1 30); do
             if curl -sf http://127.0.0.1:18080/alive >/dev/null; then break; fi
             sleep 1

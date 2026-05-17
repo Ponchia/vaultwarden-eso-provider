@@ -175,6 +175,7 @@ selector_from_live_test() {
   export BWESO_TEST_CLIENT_ID="${client_id}"
   export BWESO_TEST_CLIENT_SECRET="${client_secret}"
   export BWESO_TEST_MASTER_PASSWORD="${master_password}"
+  export BWESO_TEST_LIVE=true
   export BWESO_TEST_SELECTOR_OUTPUT="${tmp_dir}/selector.json"
   if [[ -n "${single_origin_url}" ]]; then
     export BWESO_TEST_SINGLE_ORIGIN_URL="${single_origin_url}"

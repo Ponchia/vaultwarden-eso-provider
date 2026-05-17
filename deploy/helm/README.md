@@ -15,13 +15,14 @@ The default chart shape is intentionally small:
 - Prometheus metrics exposed by the pod, with optional `ServiceMonitor`
   rendering when Prometheus Operator CRDs are installed.
 - Webhook bearer-token authentication enabled by default.
-- Optional provider-side selector policy with exact `remoteRef.key` allowlists
-  and prefix allowlists, either inline or sourced from a hot-reloadable
-  ConfigMap (`selectorPolicy.configMap`) so onboarding needs no provider
-  restart.
+- Provider-side selector policy with exact `remoteRef.key` allowlists and prefix
+  allowlists, either inline or sourced from a hot-reloadable ConfigMap
+  (`selectorPolicy.configMap`) so onboarding needs no provider restart. Running
+  without a selector policy requires `selectorPolicy.allowAllSelectors=true`.
 - Baseline resource requests/limits and seccomp by default.
-- Optional NetworkPolicy rendering. Enable it only after adapting ingress and
-  egress rules to your ESO, DNS, Bitwarden Cloud, or Vaultwarden path.
+- Optional NetworkPolicy rendering. When enabled, default empty rules deny all
+  traffic until you adapt ingress and egress rules to your ESO, DNS, Bitwarden
+  Cloud, or Vaultwarden path.
 - Optional `hostAliases` rendering for private DNS, split-horizon DNS, or
   in-cluster ingress paths that must preserve the Bitwarden/Vaultwarden
   hostname for TLS and HTTP host routing.

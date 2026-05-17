@@ -5,6 +5,8 @@ on:
   push:
     branches:
       - main
+  schedule:
+    - cron: "21 5 * * 2"
 
 permissions:
   contents: read
@@ -79,17 +81,8 @@ jobs:
           --set-string 'selectorPolicy.configMap.keys.allowedKeyPrefixes=allowed-key-prefixes'
           | grep -q 'BWESO_ALLOWED_KEYS_FILE'
 
-      - name: Selector-policy ConfigMap guard fails without keys
-        run: |
-          if helm template bweso deploy/helm/vaultwarden-eso-provider \
-            -f deploy/helm/lint-values.yaml \
-            --namespace bweso-system \
-            --set-string 'selectorPolicy.configMap.name=bweso-selector-policy' \
-            --set-string 'selectorPolicy.configMap.keys.allowedKeys=' \
-            >/dev/null 2>&1; then
-            echo "expected helm render to fail when configMap.name is set with no keys" >&2
-            exit 1
-          fi
+      - name: Validate selector-policy Helm contracts
+        run: bash scripts/helm-policy-contracts.sh
 
       - name: Render chart with ServiceMonitor
         run: >
@@ -178,3 +171,6 @@ jobs:
 
       - name: Check Dockerfile
         run: docker buildx build --check .
+
+      - name: Build image
+        run: docker buildx build --load -t vaultwarden-eso-provider:ci .

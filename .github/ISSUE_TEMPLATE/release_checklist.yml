@@ -1,0 +1,41 @@
+name: Release checklist
+description: Track a maintainer-initiated release.
+title: "[Release]: v"
+labels:
+  - release
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not create a tag or publish artifacts until this checklist is complete. Keep artifact digests in the GitHub Release notes, not in a post-tag docs-only commit.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      placeholder: v0.2.2
+    validations:
+      required: true
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Preflight
+      options:
+        - label: "`main` is clean, pushed, and CI is green."
+        - label: "Version files agree: Cargo packages, chart version, and appVersion."
+        - label: "`CHANGELOG.md` and generated release-note labels were reviewed."
+        - label: "Live or packaging-specific smoke evidence is recorded."
+  - type: checkboxes
+    id: release
+    attributes:
+      label: Release
+      options:
+        - label: "Release tag was pushed by a maintainer from the intended commit."
+        - label: "Release workflow published the image and OCI Helm chart."
+        - label: "Release notes include image digest, chart digest, and chart SHA256."
+        - label: "Image signature and image/chart attestations are present."
+        - label: "Chart archive Sigstore bundle is attached to the GitHub Release."
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Link the release workflow run, live smoke notes, and release URL.

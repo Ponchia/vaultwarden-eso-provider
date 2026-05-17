@@ -1,6 +1,7 @@
 name: Fuzz
 
 on:
+  # checkov:skip=CKV_GHA_7:manual maintainer input only controls fuzz duration
   workflow_dispatch:
     inputs:
       duration_seconds:

@@ -3,7 +3,26 @@
 Install External Secrets Operator first. This project provides the Bitwarden
 Password Manager and Vaultwarden resolver behind ESO's generic webhook provider.
 
-Create a namespace and provider runtime credential Secret:
+Create a namespace and provider runtime credential Secret. For real credentials,
+prefer a secret manager or files so values do not land in shell history:
+
+```bash
+install -m 0700 -d /tmp/bweso-bootstrap
+printf '%s' 'user.<uuid>' > /tmp/bweso-bootstrap/client-id
+printf '%s' '...' > /tmp/bweso-bootstrap/client-secret
+printf '%s' '...' > /tmp/bweso-bootstrap/master-password
+printf '%s' 'generate-a-long-random-token' > /tmp/bweso-bootstrap/webhook-token
+
+kubectl create namespace bweso-system
+kubectl -n bweso-system create secret generic bweso-credentials \
+  --from-file=client-id=/tmp/bweso-bootstrap/client-id \
+  --from-file=client-secret=/tmp/bweso-bootstrap/client-secret \
+  --from-file=master-password=/tmp/bweso-bootstrap/master-password \
+  --from-file=webhook-token=/tmp/bweso-bootstrap/webhook-token
+rm -rf /tmp/bweso-bootstrap
+```
+
+For throwaway local clusters, literal placeholders are shorter:
 
 ```bash
 kubectl create namespace bweso-system
@@ -27,7 +46,7 @@ unreleased `main` builds, clone the repository and use
 Set the release chart reference:
 
 ```bash
-CHART_VERSION=0.1.3
+CHART_VERSION=0.2.1
 CHART_REF="oci://ghcr.io/ponchia/charts/vaultwarden-eso-provider"
 ```
 
@@ -66,18 +85,19 @@ instead and omit `--version`:
 CHART_REF="https://github.com/ponchia/vaultwarden-eso-provider/releases/download/v${CHART_VERSION}/vaultwarden-eso-provider-${CHART_VERSION}.tgz"
 ```
 
-`networkPolicy.enabled` is false by default. Enable it only after tailoring the
-ingress rules for ESO/Prometheus and the egress rules for DNS plus your
-Bitwarden/Vaultwarden backend. If the provider must reach an in-cluster ingress
-or private address while still using the public Vaultwarden hostname for TLS
-and HTTP host routing, configure `hostAliases`.
+`networkPolicy.enabled` is false by default. When enabled, the default empty
+ingress and egress lists deny all traffic until you add rules for ESO,
+Prometheus, DNS, and your Bitwarden/Vaultwarden backend. If the provider must
+reach an in-cluster ingress or private address while still using the public
+Vaultwarden hostname for TLS and HTTP host routing, configure `hostAliases`.
 
 `selectorPolicy.allowedKeys` and `selectorPolicy.allowedKeyPrefixes` are
-provider-side allowlists for the raw `remoteRef.key`. Empty lists allow all
-items visible to the configured account, which is acceptable only when the
-Bitwarden/Vaultwarden account itself is already scoped to the trust boundary.
-When either list is configured, every non-matching selector returns `403`
-without echoing the requested key.
+provider-side allowlists for the raw `remoteRef.key`. Public installs should
+configure at least one allowlist entry or a ConfigMap-backed allowlist. Running
+without a selector policy requires the explicit `selectorPolicy.allowAllSelectors=true`
+escape hatch and is acceptable only when the Bitwarden/Vaultwarden account
+itself is already scoped to the trust boundary. Every non-matching selector
+returns `403` without echoing the requested key.
 
 Selector policy is item-key scoped, not property scoped. If a namespace can
 request an allowed `remoteRef.key` or `dataFrom.extract.key`, it can request any
@@ -117,7 +137,10 @@ ESO reads this same-namespace Secret to render the authorization header.
 Keeping it token-only avoids copying the Bitwarden/Vaultwarden client secret and
 master password into workload namespaces.
 
-Point ESO at the webhook from the workload namespace:
+Point ESO at the webhook from the workload namespace. The webhook bearer token
+is a read capability over every selector allowed by provider policy; restrict
+who can read it and who can create or edit `SecretStore` and `ExternalSecret`
+resources.
 
 ```yaml
 apiVersion: external-secrets.io/v1
@@ -159,9 +182,9 @@ terminates TLS/mTLS, and point the ESO webhook URL at that protected HTTPS
 endpoint instead.
 
 Then create `ExternalSecret` resources that select item IDs/names and
-properties. Prefer `id:<item-id>` selectors. `name:<item-name>` is supported for
-operator convenience, and bare selectors currently try ID first then item name
-for pre-release compatibility.
+properties. Selectors must use `id:<item-id>` or `name:<item-name>`. Prefer
+`id:` selectors in production; bare selectors are rejected with `400 validation`
+since `v0.2`.
 
 For migrated Kubernetes Secret keys, prefer custom fields and request them with
 `field.<key>`. Plain `username` and `password` select Bitwarden login fields;
@@ -189,6 +212,12 @@ Single-property responses always expose the selected value at `$.data.value`, so
 the `SecretStore` does not need JSONPath templating for field names. See
 [`../../deploy/eso`](../../deploy/eso) for Secret type, Reloader,
 `ClusterSecretStore`, and NetworkPolicy examples.
+
+For production installs, pin and verify release artifacts before rollout.
+Releases produced by the current release workflow include the image digest,
+chart digest, chart archive checksum, Sigstore signing evidence, and GitHub
+artifact-attestation evidence in the GitHub Release notes. Older tags may have
+less evidence; see [`../release-verification.md`](../release-verification.md).
 
 Whole-item `dataFrom.extract` uses a separate webhook `SecretStore` shape with
 `result.jsonPath: "$.data"` and a request body that omits
@@ -230,6 +259,28 @@ helm upgrade --install bweso "${CHART_REF}" \
 
 See [`../operations/observability.md`](../operations/observability.md) for the
 full metric list and operational notes.
+
+## Verify Without Printing Secret Values
+
+After install, wait for the provider and ESO resources without dumping Secret
+data:
+
+```bash
+kubectl -n bweso-system rollout status deployment/bweso-vaultwarden-eso-provider
+kubectl -n app wait externalsecret/app-database --for=condition=Ready --timeout=120s
+kubectl -n app get secret app-database -o jsonpath='{.metadata.name}{"\n"}'
+kubectl -n app get secret app-database -o json | jq '.data | keys'
+```
+
+Common redacted error classes:
+
+| Error class | Likely fix |
+| --- | --- |
+| `auth` | Check the token-only auth Secret and header template. |
+| `validation` | Check `id:`/`name:` selector prefixes and JSON syntax. |
+| `policy_denied` | Add the selector or use the correct provider instance. |
+| `not_found` | Check item ID/name and property without posting values. |
+| `upstream_*` | Check reachability, TLS trust, and credentials. |
 
 ## Resource Sizing
 

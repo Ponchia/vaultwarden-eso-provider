@@ -63,7 +63,7 @@ config:
 # Optional PEM CA bundle for Vaultwarden installs on a private CA. When set,
 # the contents are mounted at /var/run/secrets/bweso-ca/ca.pem and
 # BWESO_CA_BUNDLE_FILE points at it. Certificates supplement (not replace)
-# the system trust store.
+# the bundled WebPKI trust roots.
 caBundle:
   # Inline PEM (multi-cert OK). Mutually exclusive with existingSecret.
   pem: ""
@@ -72,9 +72,10 @@ caBundle:
     key: ca.pem
 
 selectorPolicy:
-  # Empty lists mean allow every remoteRef.key visible to the configured
-  # Bitwarden/Vaultwarden account. Configure one or both lists to deny by
-  # default and allow only matching selectors.
+  # Public installs should deny by default and allow only reviewed selectors.
+  # Set allowAllSelectors=true only when the Bitwarden/Vaultwarden account is
+  # already scoped to the same trust boundary as this provider Deployment.
+  allowAllSelectors: false
   allowedKeys: []
   allowedKeyPrefixes: []
   # Optional: source the allow-list from an existing ConfigMap instead of (or
@@ -104,8 +105,11 @@ credentials:
     name: ""
     keys:
       clientId: client-id
+      # checkov:skip=CKV_SECRET_6:example Kubernetes Secret key name, not a secret value
       clientSecret: client-secret
+      # checkov:skip=CKV_SECRET_6:example Kubernetes Secret key name, not a secret value
       masterPassword: master-password
+      # checkov:skip=CKV_SECRET_6:example Kubernetes Secret key name, not a secret value
       webhookToken: webhook-token
   # create is useful for local smoke tests. For real installs, prefer an
   # existing Secret because values supplied here can be retained in Helm
@@ -179,20 +183,10 @@ topologySpreadConstraints: []
 
 networkPolicy:
   # NetworkPolicy is intentionally opt-in because backend reachability is
-  # cluster-specific. Enable it after adapting ingress and egress rules for ESO,
-  # DNS, Bitwarden Cloud, or your in-cluster Vaultwarden/ingress path.
+  # cluster-specific. When enabled, the default empty rule lists deny all ingress
+  # and egress. Add rules for ESO, Prometheus, DNS, Bitwarden Cloud, or your
+  # in-cluster Vaultwarden/ingress path.
   enabled: false
   annotations: {}
-  ingress:
-    - ports:
-        - protocol: TCP
-          port: 8080
-  egress:
-    - ports:
-        - protocol: UDP
-          port: 53
-        - protocol: TCP
-          port: 53
-    - ports:
-        - protocol: TCP
-          port: 443
+  ingress: []
+  egress: []

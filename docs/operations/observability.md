@@ -54,6 +54,11 @@ Current series:
 | `bweso_cache_refreshes_total` | counter | `outcome` | Full vault sync cache refresh attempts. |
 | `bweso_cache_last_success_timestamp_seconds` | gauge | none | Unix timestamp of the last successful sync cache refresh. Present after the first successful refresh. |
 | `bweso_cache_last_success_age_seconds` | gauge | none | Age of the last successful sync cache refresh. Present after the first successful refresh. |
+| `bweso_policy_reloads_total` | counter | `outcome` | Selector-policy reload cycles for ConfigMap-backed policy: `success`, `unchanged`, or `failure`. |
+| `bweso_policy_active_allowed_keys` | gauge | none | Count of exact selector keys in the active allowlist. |
+| `bweso_policy_active_allowed_key_prefixes` | gauge | none | Count of selector key prefixes in the active allowlist. |
+| `bweso_policy_last_reload_success_timestamp_seconds` | gauge | none | Last successful selector-policy evaluation timestamp. Present for file-backed policy. |
+| `bweso_policy_last_reload_success_age_seconds` | gauge | none | Age of the last successful selector-policy evaluation. Present for file-backed policy. |
 
 <!-- markdownlint-enable MD013 -->
 
@@ -107,6 +112,14 @@ sum(rate(bweso_resolve_requests_total{outcome="error"}[5m])) > 0
 
 ```promql
 time() - bweso_cache_last_success_timestamp_seconds > 600
+```
+
+```promql
+sum(rate(bweso_policy_reloads_total{outcome="failure"}[5m])) > 0
+```
+
+```promql
+bweso_policy_last_reload_success_age_seconds > 600
 ```
 
 ```promql

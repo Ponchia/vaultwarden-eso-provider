@@ -2,17 +2,18 @@
 
 [![CI](https://github.com/Ponchia/vaultwarden-eso-provider/actions/workflows/ci.yml/badge.svg)](https://github.com/Ponchia/vaultwarden-eso-provider/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/Ponchia/vaultwarden-eso-provider?include_prereleases&sort=semver)](https://github.com/Ponchia/vaultwarden-eso-provider/releases)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/Ponchia/vaultwarden-eso-provider/badge)](https://scorecard.dev/viewer/?uri=github.com/Ponchia/vaultwarden-eso-provider)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
 Unofficial [External Secrets Operator](https://external-secrets.io/) webhook
 provider for **Vaultwarden** and self-hosted **Bitwarden Password Manager**
 vaults. Also compatible with **Bitwarden Cloud** Password Manager.
 
-The primary target is teams and homelabs running Vaultwarden who want
-ESO-managed Kubernetes Secrets and cannot use Bitwarden Secrets Manager
-(`bws`) — Secrets Manager is a separate paid product surface and Vaultwarden
-does not implement it. Bitwarden Cloud Password Manager users get the same
-ESO path for free, using their existing user API key.
+The primary target is teams and homelabs running Vaultwarden who already use
+Password Manager vault items as a source of truth and want ESO-managed
+Kubernetes Secrets. Bitwarden Secrets Manager (`bws`) is a separate product
+surface and Vaultwarden does not implement it. Bitwarden Cloud Password Manager
+users can use the same ESO path with a dedicated user API key.
 
 ```text
 Vaultwarden or Bitwarden Cloud Password Manager
@@ -34,9 +35,9 @@ the External Secrets Operator project.
 
 ## Status
 
-`v0.1.3` is the current public release. The provider is functional and has
+`v0.2.1` is the current public release. The provider is functional and has
 been smoke-tested end-to-end against the released chart and image, but the
-`v0.1.x` line is still pre-`v1.0.0`: chart values, image tags, and crate
+project is still pre-`v1.0.0`: chart values, image tags, and crate
 APIs may change, there is no production soak time, and the project has a
 single maintainer. Pin chart and image versions for every real deployment
 and treat upgrades as deliberate.
@@ -50,9 +51,12 @@ Verified so far:
 - Target Secret recreation, webhook restart, expected not-found failures,
   selector-policy denial, health probes, and redacted metrics.
 - Exact `v0.1.3` OCI release chart and image smoke test against Vaultwarden
-  on 2026-05-11. This is a smoke test, not extended production verification.
+  on 2026-05-11. This is historical backend evidence, not extended production
+  verification.
 - Bitwarden Cloud US split endpoint live smoke was verified for `v0.1.1` on
-  2026-05-11; `v0.1.3` does not change the provider protocol implementation.
+  2026-05-11; the `v0.2.x` line keeps the same login/sync protocol path and adds
+  selector, CA-bundle, concurrency, and policy-reload controls covered by
+  automated tests and release checks.
 - Prometheus Operator `ServiceMonitor` / `PrometheusRule` compatibility, both
   through Helm rendering and server-side Kubernetes validation.
 
@@ -63,8 +67,8 @@ Use this project when:
 - You run **Vaultwarden** (or self-hosted Bitwarden Password Manager) and want
   ESO-managed Kubernetes Secrets sourced from vault items. This is the
   primary case the project is built for.
-- You run **Bitwarden Cloud Password Manager** and do not want to pay for
-  Bitwarden Secrets Manager just to feed Kubernetes Secrets.
+- You run **Bitwarden Cloud Password Manager** and want to sync Password Manager
+  vault items through ESO rather than adopting Bitwarden Secrets Manager.
 - You want ESO to own refresh intervals, target Secret policies, templating,
   status, and GitOps-friendly manifests.
 - You can dedicate a Vaultwarden or Bitwarden user (and its API key) to each
@@ -82,13 +86,13 @@ Use something else when:
   Use Vault, a cloud secret manager, Infisical, or another purpose-built
   backend.
 - You need shared **organization** vault-item decryption or attachment
-  extraction today. Both are explicit non-features in the `v0.1.x` line; for
+  extraction today. Both are explicit non-features in the current line; for
   many teams the organization-item gap is the deciding factor.
 - You cannot accept storing a Vaultwarden/Bitwarden user API key and master
   password in the provider runtime namespace.
-- Your Vaultwarden uses a private CA that you cannot replace with a
-  publicly-trusted certificate. Custom CA bundle support is on the roadmap
-  but not implemented in `v0.1.x`.
+- Your threat model requires built-in TLS/mTLS on the ESO-to-provider webhook
+  hop. The chart exposes a cluster-internal HTTP Service by default; use a mesh,
+  ingress, or gateway when the pod network is not a trusted boundary.
 
 ## Features
 
@@ -99,8 +103,11 @@ Use something else when:
 - Single-field sync through ESO `remoteRef`.
 - Whole-item sync through ESO `dataFrom.extract`.
 - Explicit `id:<item-id>` and `name:<item-name>` selectors.
-- Optional provider-side selector policy with exact key and prefix allowlists.
+- Provider-side selector policy with exact key and prefix allowlists, including
+  an optional hot-reloadable ConfigMap source.
 - In-memory sync cache with TTL and single-flight refresh behavior.
+- Custom CA bundle support for private Vaultwarden CAs.
+- Global `/v1/resolve` concurrency cap with `503 overloaded` load shedding.
 - Bearer-token authentication on `/v1/resolve` by default.
 - `/livez`, `/readyz`, and `/metrics` endpoints.
 - Helm chart, ESO examples, NetworkPolicy examples, Reloader examples,
@@ -112,19 +119,19 @@ Use something else when:
 - **Shared organization items are not supported.** Selected organization items
   fail with `unsupported_shared_item` until organization-key decryption is
   implemented and live-tested against both Vaultwarden and Bitwarden Cloud.
-  For many teams this is the deciding gap; the `v0.1.x` line is realistic
+  For many teams this is the deciding gap; the current line is realistic
   only for personal vaults or small per-user-key deployments.
 - **Custom CA bundle is supported** as of `v0.2`. Set `caBundle.pem` (inline)
   or `caBundle.existingSecret.name` in the Helm values, or pass
   `BWESO_CA_BUNDLE_FILE` directly when running the binary. The bundle is a
-  PEM file that supplements (not replaces) the system trust store.
+  PEM file that supplements the bundled WebPKI trust roots.
 - **Concurrency cap on `/v1/resolve`.** As of `v0.2`, excess concurrent
   requests are shed with `503 overloaded`. Default cap is 16 in-flight;
   configure via `BWESO_RESOLVE_CONCURRENCY_LIMIT` or `config.resolveConcurrencyLimit`.
   Per-source rate limiting (e.g., per-token bucket) is not yet implemented.
 - Bitwarden Secrets Manager (`bws`) APIs are not supported by design — that
   product surface has first-party integrations.
-- Attachment properties fail with `unsupported_attachment`. For `v0.1.x`, store
+- Attachment properties fail with `unsupported_attachment`. For now, store
   certificates, kubeconfigs, SSH keys, and multiline config in secure notes or
   custom fields.
 - Interactive two-factor and new-device challenge flows are not supported for
@@ -163,7 +170,7 @@ kubectl -n bweso-system create secret generic bweso-credentials \
 Set the release chart reference:
 
 ```bash
-CHART_VERSION=0.1.3
+CHART_VERSION=0.2.1
 CHART_REF="oci://ghcr.io/ponchia/charts/vaultwarden-eso-provider"
 ```
 
@@ -199,6 +206,13 @@ checksum verification and environments that do not pull Helm charts from OCI:
 ```bash
 CHART_ARCHIVE_URL="https://github.com/ponchia/vaultwarden-eso-provider/releases/download/v${CHART_VERSION}/vaultwarden-eso-provider-${CHART_VERSION}.tgz"
 ```
+
+For releases produced by the current release workflow, release notes include
+the image digest, chart digest, chart archive SHA256, Sigstore signing evidence,
+and GitHub artifact-attestation evidence. Older tags may have less evidence;
+use the notes on that exact GitHub Release as the source of truth. See
+[`docs/release-verification.md`](docs/release-verification.md) before pinning
+a production install.
 
 For unreleased `main` builds, clone the repository, replace `"${CHART_REF}"`
 with `./deploy/helm/vaultwarden-eso-provider`, and omit `--version`.
@@ -316,16 +330,15 @@ The provider is intentionally narrow:
 - The provider needs no Kubernetes API RBAC.
 - The provider's Vaultwarden/Bitwarden client ID, client secret, and master
   password stay in the provider namespace.
-- Workload namespaces need only the webhook bearer token used by ESO.
+- Workload namespaces need only the webhook bearer token used by ESO. Treat that
+  token as a read capability over every selector allowed by provider policy.
 - Logs, metrics, and public error responses redact secret values, item IDs,
   item names, requested properties, API tokens, master passwords, and derived
   keys.
 - `/v1/resolve` checks bearer-token authentication before parsing the request
   body, and resolve request bodies are capped at 16 KiB.
 - TLS verification is required for non-local Vaultwarden/Bitwarden endpoints,
-  using the system trust store. Custom CA bundles are not yet configurable;
-  Vaultwarden installs on a private CA must front the API with a publicly-
-  trusted certificate.
+  using the bundled WebPKI trust roots plus any configured custom CA bundle.
 
 ### What the default deployment does *not* give you
 
@@ -339,9 +352,10 @@ The provider is intentionally narrow:
   item and can use whole-item extraction. For strict per-property isolation,
   use dedicated provider credentials per trust boundary plus exact `id:`
   allowlists, not selector policy alone.
-- **No rate limiting on `/v1/resolve`.** Authenticated callers can drive
-  resolve traffic at any rate; deploy with NetworkPolicy restricting ingress
-  to the ESO controller namespace.
+- **No per-source rate limiting on `/v1/resolve`.** The provider has a global
+  concurrency cap, but authenticated callers can still consume that shared
+  budget; deploy with NetworkPolicy restricting ingress to the ESO controller
+  namespace.
 - **The master password sits in provider pod memory.** This is a fundamental
   trade-off of using Password Manager vault items — it is not a property of
   Bitwarden Secrets Manager, which Vaultwarden does not implement. See the
@@ -363,7 +377,8 @@ For each namespace or trust boundary:
   grouped and reviewed.
 - Use namespace-local `SecretStore` resources. Put only the webhook bearer token
   in workload namespaces; keep the Bitwarden/Vaultwarden client secret and
-  master password in the provider namespace.
+  master password in the provider namespace. Restrict who can read the token and
+  who can create or edit `SecretStore` / `ExternalSecret` resources.
 - Rotate the Bitwarden/Vaultwarden API key, master password, and webhook token
   on the same schedule as other infrastructure credentials. After updating the
   runtime Secret, restart the provider pods so they read the new mounted files,
@@ -409,9 +424,10 @@ accidentally emptied), that is treated as an error, not as allow-all: the
 provider fails fast at startup and keeps the last known-good policy on reload.
 It can never silently widen to allow-all. If inline entries are also
 configured, an emptied file instead narrows the effective policy to the inline
-baseline (still never wider) rather than erroring. The legacy "no policy
-configured ⇒ allow all" behavior applies only when no inline list and no file
-source are set at all. See
+baseline (still never wider) rather than erroring. Running without any selector
+policy now requires the explicit `selectorPolicy.allowAllSelectors=true` Helm
+value or `BWESO_ALLOW_ALL_SELECTORS=true`; use that only when the provider
+account is already scoped to the same trust boundary. See
 [deploy/eso/selector-policy-configmap.example.yaml](deploy/eso/selector-policy-configmap.example.yaml).
 
 With more than one provider replica, a ConfigMap change propagates per pod
@@ -553,6 +569,7 @@ BWESO_CLIENT_ID="user.<uuid>" \
 BWESO_CLIENT_SECRET="..." \
 BWESO_MASTER_PASSWORD="..." \
 BWESO_WEBHOOK_AUTH_TOKEN="..." \
+BWESO_ALLOW_ALL_SELECTORS=true \
 BWESO_CACHE_TTL_SECONDS=60 \
 cargo run -p vaultwarden-eso-provider -- --listen 127.0.0.1:8080
 ```
@@ -566,6 +583,7 @@ BWESO_CLIENT_ID="user.<uuid>" \
 BWESO_CLIENT_SECRET="..." \
 BWESO_MASTER_PASSWORD="..." \
 BWESO_WEBHOOK_AUTH_TOKEN="..." \
+BWESO_ALLOW_ALL_SELECTORS=true \
 BWESO_CACHE_TTL_SECONDS=60 \
 cargo run -p vaultwarden-eso-provider -- --listen 127.0.0.1:8080
 ```

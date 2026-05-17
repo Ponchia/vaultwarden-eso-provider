@@ -47,3 +47,32 @@ impl Lifecycle {
         self.shutdown.notified().await;
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn shutdown_requested_waits_until_marked() {
+        let lifecycle = Lifecycle::default();
+
+        let before_shutdown =
+            tokio::time::timeout(Duration::from_millis(20), lifecycle.shutdown_requested()).await;
+        assert!(
+            before_shutdown.is_err(),
+            "shutdown_requested must not resolve before shutdown"
+        );
+
+        lifecycle.mark_shutting_down();
+        assert!(!lifecycle.is_ready());
+
+        let after_shutdown =
+            tokio::time::timeout(Duration::from_secs(1), lifecycle.shutdown_requested()).await;
+        assert!(
+            after_shutdown.is_ok(),
+            "shutdown_requested should resolve after shutdown"
+        );
+    }
+}

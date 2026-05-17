@@ -9,6 +9,10 @@ hostAliases:
     hostnames:
       - vaultwarden.example.com
 
+selectorPolicy:
+  allowedKeys:
+    - id:example-item
+
 networkPolicy:
   enabled: true
 

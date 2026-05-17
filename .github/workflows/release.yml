@@ -25,6 +25,10 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Verify release versions
+        if: startsWith(github.ref, 'refs/tags/')
+        run: bash scripts/verify-release-version.sh "${GITHUB_REF_NAME}"
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -70,6 +74,9 @@ jobs:
           --set-string 'metrics.serviceMonitor.labels.release=prometheus'
           --set-string 'hostAliases[0].ip=10.43.186.117'
           --set-string 'hostAliases[0].hostnames[0]=vaultwarden.example.com'
+
+      - name: Validate selector-policy Helm contracts
+        run: bash scripts/helm-policy-contracts.sh
 
       - name: Validate documentation
         run: npx --yes markdownlint-cli2@0.22.1 '**/*.md'
@@ -121,6 +128,7 @@ jobs:
     name: Image (${{ matrix.platform }})
     needs: verify
     runs-on: ${{ matrix.runner }}
+    if: startsWith(github.ref, 'refs/tags/')
     permissions:
       contents: read
       packages: write
@@ -195,9 +203,15 @@ jobs:
     name: Image manifest
     needs: image-platform
     runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
     permissions:
       contents: read
+      attestations: write
+      id-token: write
       packages: write
+    outputs:
+      image_ref: ${{ steps.image_ref.outputs.ref }}
+      image_digest: ${{ steps.image_digest.outputs.digest }}
     env:
       DOCKER_METADATA_SHORT_SHA_LENGTH: 12
     steps:
@@ -263,6 +277,19 @@ jobs:
         id: image_ref
         run: echo "ref=$(jq -r '.tags[0]' <<< "$DOCKER_METADATA_OUTPUT_JSON")" >> "$GITHUB_OUTPUT"
 
+      - name: Capture image index digest
+        id: image_digest
+        run: |
+          digest="$(
+            docker buildx imagetools inspect "${{ steps.image_ref.outputs.ref }}" \
+              | awk '/^Digest:/ { print $2; exit }'
+          )"
+          if [ -z "$digest" ]; then
+            echo "Failed to capture image index digest" >&2
+            exit 1
+          fi
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
       - name: Trivy release image scan
         uses: aquasecurity/trivy-action@v0.36.0
         with:
@@ -272,14 +299,32 @@ jobs:
           exit-code: "1"
           ignore-unfixed: true
 
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v4.1.2
+
+      - name: Sign image
+        run: |
+          cosign sign --yes \
+            "${{ steps.image.outputs.name }}@${{ steps.image_digest.outputs.digest }}"
+
+      - name: Attest image provenance
+        uses: actions/attest@v4
+        with:
+          subject-name: ${{ steps.image.outputs.name }}
+          subject-digest: ${{ steps.image_digest.outputs.digest }}
+          push-to-registry: true
+
   chart:
     name: Chart
     needs: image
     runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
     env:
       HELM_VERSION: v4.1.4
     permissions:
+      attestations: write
       contents: write
+      id-token: write
       packages: write
     steps:
       - name: Checkout
@@ -305,6 +350,7 @@ jobs:
                 --password-stdin
 
       - name: Push chart to GHCR OCI
+        id: helm_push
         if: startsWith(github.ref, 'refs/tags/')
         run: |
           owner="${GITHUB_REPOSITORY_OWNER,,}"
@@ -316,6 +362,13 @@ jobs:
 
           oci_registry="oci://ghcr.io/${owner}/charts"
           helm push "$chart_archive" "$oci_registry" | tee /tmp/helm-push.txt
+          digest="$(awk '/Digest:/ { print $2; exit }' /tmp/helm-push.txt)"
+          if [ -z "$digest" ]; then
+            echo "Failed to capture OCI chart digest" >&2
+            exit 1
+          fi
+          echo "registry=$oci_registry" >> "$GITHUB_OUTPUT"
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
 
           {
             echo "### Helm OCI chart"
@@ -325,14 +378,104 @@ jobs:
             sed 's/^/- /' /tmp/helm-push.txt
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Install cosign
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: sigstore/cosign-installer@v4.1.2
+
+      - name: Sign chart archive
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          chart_archive="$(find dist -maxdepth 1 -name '*.tgz' -print -quit)"
+          if [ -z "$chart_archive" ]; then
+            echo "No packaged chart archive found" >&2
+            exit 1
+          fi
+          cosign sign-blob --yes \
+            --bundle "${chart_archive}.sigstore.json" \
+            "$chart_archive"
+
+      - name: Attest chart archive provenance
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/attest@v4
+        with:
+          subject-path: dist/*.tgz
+
+      - name: Generate release notes
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api "repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
+            -f tag_name="${GITHUB_REF_NAME}" \
+            -f target_commitish="${GITHUB_SHA}" \
+            --jq .body > dist/generated-release-notes.md
+
+      - name: Write release evidence
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          chart_archive="$(find dist -maxdepth 1 -name '*.tgz' -print -quit)"
+          if [ -z "$chart_archive" ]; then
+            echo "No packaged chart archive found" >&2
+            exit 1
+          fi
+          chart_sha="$(sha256sum "$chart_archive" | awk '{ print $1 }')"
+          chart_name="$(basename "$chart_archive")"
+          version="${GITHUB_REF_NAME#v}"
+          bundle_name="${chart_name}.sigstore.json"
+
+          {
+            if [ -s dist/generated-release-notes.md ]; then
+              cat dist/generated-release-notes.md
+              echo
+            else
+              echo "## Changes"
+              echo
+              echo "Generated release notes were unavailable for this tag."
+              echo
+            fi
+
+            cat <<EOF
+          ## Release evidence
+
+          - Source commit: \`${GITHUB_SHA}\`
+          - Image: \`${{ needs.image.outputs.image_ref }}\`
+          - Image index digest: \`${{ needs.image.outputs.image_digest }}\`
+          - Image signature: keyless Sigstore signature on the image digest
+          - Image provenance: GitHub artifact attestation on the image digest
+          - OCI Helm chart: \`${{ steps.helm_push.outputs.registry }}/vaultwarden-eso-provider --version ${version}\`
+          - OCI Helm chart digest: \`${{ steps.helm_push.outputs.digest }}\`
+          - GitHub Release chart archive: \`${chart_name}\`
+          - Chart archive SHA256: \`${chart_sha}\`
+          - Chart archive Sigstore bundle: \`${bundle_name}\`
+          - Chart archive provenance: GitHub artifact attestation on the archive
+
+          ## Verification
+
+          The release workflow completed formatting, clippy, coverage-gated tests,
+          Helm lint/template checks, documentation validation, Gitleaks, Trivy
+          filesystem scanning, cargo-deny, Checkov, multi-arch image publishing,
+          release-image Trivy scan, keyless image signing, image provenance
+          attestation, OCI Helm chart publishing, chart archive signing, chart
+          archive provenance attestation, and GitHub Release chart attachment.
+          EOF
+          } > dist/release-notes.md
+
+          # Strip heredoc indentation from the workflow YAML.
+          sed -i 's/^          //' dist/release-notes.md
+
       - name: Upload chart artifact
         uses: actions/upload-artifact@v7
         with:
           name: helm-chart
-          path: dist/*.tgz
+          path: |
+            dist/*.tgz
+            dist/*.sigstore.json
 
       - name: Attach chart to GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v3
         with:
-          files: dist/*.tgz
+          body_path: dist/release-notes.md
+          files: |
+            dist/*.tgz
+            dist/*.sigstore.json

@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for helping improve Bitwarden ESO Provider. This project sits between a
+Thanks for helping improve Vaultwarden ESO Provider. This project sits between a
 password manager, External Secrets Operator, and Kubernetes Secrets, so changes
 must keep security, compatibility, and operational behavior clear.
 

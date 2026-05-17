@@ -23,6 +23,9 @@ Required before calling a release generally usable:
   [`repository-governance.md`](repository-governance.md).
 - Confirm the release branch is clean, pushed, and CI is green.
 - Confirm `main` branch protection and release tag protection are active.
+- Confirm merged PRs have release-note labels that match
+  [`.github/release.yml`](../.github/release.yml), and update
+  [`../CHANGELOG.md`](../CHANGELOG.md) for notable user-facing changes.
 - Tag and publish a multi-arch image from GitHub Actions.
 - Run `scripts/live-eso-smoke.sh` against real Vaultwarden and Bitwarden Cloud
   accounts with k3s or a kind cluster with ESO installed, with selector policy
@@ -39,6 +42,10 @@ Required before calling a release generally usable:
 - Publish the Helm chart to GHCR as an OCI chart and attach the packaged chart
   artifact to the GitHub Release.
 - Review the release image SBOM/provenance output.
+- Verify the image has a keyless Sigstore signature and GitHub artifact
+  attestation.
+- Verify the chart archive has a Sigstore bundle and GitHub artifact
+  attestation.
 - Review logs for secret-value redaction under success and failure paths.
 - Review metrics for secret-value and vault-item metadata redaction under success
   and failure paths.
@@ -66,17 +73,23 @@ Each GitHub Release must include:
 - Source commit.
 - Image reference.
 - Image index digest.
+- Image signature evidence.
+- Image provenance attestation evidence.
 - OCI Helm chart reference.
 - OCI Helm chart digest.
 - Helm chart download URL.
 - Helm chart SHA256.
+- Helm chart Sigstore bundle.
+- Helm chart provenance attestation evidence.
 
 Generated artifact hashes belong in GitHub Release notes, not in a follow-up
 post-tag commit that makes `main` look newer than the release for documentation
 only.
 
 The current public release notes are the source of truth for published artifact
-digests and checksums.
+digests, checksums, signatures, and attestations. See
+[`release-verification.md`](release-verification.md) for consumer verification
+commands.
 
 Nice to have before `v1.0.0`:
 

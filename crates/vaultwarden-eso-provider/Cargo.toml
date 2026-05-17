@@ -29,6 +29,7 @@ tower-http.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 url.workspace = true
+zeroize.workspace = true
 bweso-core = { version = "0.2.1", path = "../bweso-core" }
 bweso-bitwarden = { version = "0.2.1", path = "../bweso-bitwarden" }
 

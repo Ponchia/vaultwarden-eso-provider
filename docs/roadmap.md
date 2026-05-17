@@ -56,7 +56,7 @@ deleted, old tags are yanked, no compatibility shim is kept. Targeted scope:
   crate, the chart, and the image moved.
 - Added **custom CA bundle support**: `BWESO_CA_BUNDLE_FILE` env / CLI arg
   plus `caBundle.pem` and `caBundle.existingSecret` Helm values. The bundle
-  supplements the system trust store and is the path for Vaultwarden
+  supplements the bundled WebPKI trust roots and is the path for Vaultwarden
   installs on a private CA.
 - Added a **concurrency cap on `/v1/resolve`** via a tokio Semaphore in the
   handler. Excess concurrent requests are shed with `503 overloaded`.
@@ -76,7 +76,7 @@ deleted, old tags are yanked, no compatibility shim is kept. Targeted scope:
   `.github/workflows/fuzz.yml`. Seeded corpus covers valid type-2 strings,
   legacy type-0 (rejected), and empty input.
 - Adopt the Bitwarden Password Manager SDK Rust crates: **no** (see
-  [`decisions/0001-bitwarden-sdk-adoption.md`](decisions/0001-bitwarden-sdk-adoption.md)).
+  [`decisions/0002-do-not-adopt-bitwarden-sdk.md`](decisions/0002-do-not-adopt-bitwarden-sdk.md)).
 
 ## After v0.2
 
@@ -105,9 +105,8 @@ Higher-effort follow-up work:
   surface for users who cannot consume OCI charts.
 - Revisit a native Kubernetes controller only if ESO cannot cover important
   workflows cleanly.
-- Add fuzzing on the Bitwarden encrypted-string parser and property tests on
-  URL/path construction; the current CI gates verify hygiene, not protocol
-  parser robustness.
+- Expand fuzzing beyond the encrypted-string parser and add property tests on
+  URL/path construction.
 - Consolidate the governance / readiness / release-checklist documents,
   which currently overlap.
 

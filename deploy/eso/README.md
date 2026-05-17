@@ -17,15 +17,20 @@ Recommended order:
 - `reloader.example.yaml`: Stakater Reloader annotation pattern.
 - `clustersecretstore.warning.example.yaml`: shared store pattern with the
   security warning that should accompany it.
+- `networkpolicy-eso-ingress.example.yaml`: provider ingress from the ESO
+  controller namespace, with optional Prometheus scrape ingress.
 - `networkpolicy-vaultwarden-in-cluster.example.yaml`: narrow in-cluster
   Vaultwarden egress starting point.
 - `networkpolicy-bitwarden-cloud.example.yaml`: Bitwarden Cloud egress starting
-  point. Native Kubernetes NetworkPolicy cannot restrict by DNS name; use a CNI
-  or egress gateway with FQDN policy if strict hostname enforcement is required.
+  point. It is port-only for HTTPS because native Kubernetes NetworkPolicy
+  cannot restrict by DNS name; use a CNI or egress gateway with FQDN policy if
+  strict hostname enforcement is required.
 
 The Helm chart leaves NetworkPolicy disabled by default. Enable
-`networkPolicy.enabled` only after adapting one of these examples to the exact
-DNS, ingress, Vaultwarden, ESO, and Prometheus paths in your cluster.
+`networkPolicy.enabled` only after adapting these examples to the exact DNS,
+ingress, Vaultwarden, ESO, and Prometheus paths in your cluster. With
+`networkPolicy.enabled=true`, the chart's default empty ingress/egress lists are
+deny-all until you add rules.
 
 ESO receives resolved secret values from the provider webhook. The default
 examples use the provider's in-cluster HTTP `ClusterIP` Service plus a bearer
@@ -37,9 +42,12 @@ trusted boundary, front the provider with TLS/mTLS and use that HTTPS URL in the
 
 Prefer one dedicated Bitwarden/Vaultwarden user and one namespace-local
 `SecretStore` per trust boundary. Namespace-local `SecretStore` resources read
-webhook auth from a same-namespace token Secret such as `bweso-webhook-auth`;
-the provider runtime credentials in `bweso-system` should not be reused across
-namespaces as the ESO auth Secret. Configure the Helm chart's
+webhook auth from a same-namespace token Secret such as `bweso-webhook-auth`.
+That bearer token is a read capability over every selector allowed by the
+provider policy, so restrict who can read it and who can create or edit
+`SecretStore` / `ExternalSecret` resources. The provider runtime credentials in
+`bweso-system` should not be reused across namespaces as the ESO auth Secret.
+Configure the Helm chart's
 `selectorPolicy.allowedKeys` or `selectorPolicy.allowedKeyPrefixes` whenever
 the provider credentials can see more vault items than the namespace should
 read.

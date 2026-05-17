@@ -44,4 +44,4 @@ decryption once the correct user, organization, or item key is available. User
 API-key login and per-cipher key handling are implemented. Organization key
 unwrap is separate work and must receive fixture tests plus live Vaultwarden and
 Bitwarden Cloud verification before support is advertised. Selected shared
-organization items fail explicitly in the `v0.1.x` release line.
+organization items fail explicitly in the current release line.

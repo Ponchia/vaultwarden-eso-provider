@@ -4,6 +4,15 @@
 
 -
 
+## Release Notes
+
+- [ ] Label this PR for generated release notes (`feature`, `bug`, `security`,
+      `devops`, `ci`, `release`, `documentation`, `dependencies`, or
+      `breaking-change`).
+- [ ] Add `skip-changelog` only when the change should not appear in release
+      notes.
+- [ ] Update `CHANGELOG.md` when the change is notable to operators or users.
+
 ## Validation
 
 - [ ] `cargo fmt --all -- --check`

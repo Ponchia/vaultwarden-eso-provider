@@ -12,7 +12,7 @@ contract is intentionally conservative until the first stable release.
 
 Use GitHub Security Advisories for vulnerabilities:
 
-[GitHub Security Advisories](https://github.com/Ponchia/bitwarden-eso-provider/security/advisories/new)
+[GitHub Security Advisories](https://github.com/Ponchia/vaultwarden-eso-provider/security/advisories/new)
 
 Do not open a public issue for vulnerabilities, credential exposure, auth
 bypass, redaction failures, decrypted secret disclosure, path traversal,

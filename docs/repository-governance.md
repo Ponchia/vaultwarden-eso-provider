@@ -1,6 +1,6 @@
 # Repository Governance
 
-This document captures the public repository settings for Bitwarden ESO
+This document captures the public repository settings for Vaultwarden ESO
 Provider.
 
 ## Current Repository Settings
@@ -52,6 +52,10 @@ Protect `main` with these rules:
 - Block force pushes.
 - Block deletions.
 
+`OpenSSF Scorecard` runs on `main`, schedule, and manual dispatch and uploads
+SARIF as post-merge security evidence. Do not make it a required PR check unless
+the workflow is changed to report on pull-request commits.
+
 For a solo-maintainer repository, do not require CODEOWNERS approval or one
 approving review yet; self-authored maintenance PRs and Dependabot patch PRs
 would otherwise be blocked without a second trusted reviewer. Add required
@@ -67,6 +71,11 @@ Only maintainers should be able to push tags matching `v*`. Release tags publish
 multi-arch images and Helm chart artifacts, so tag protection must remain active
 for those tags.
 
+Release notes are generated from pull request labels with
+[`.github/release.yml`](../.github/release.yml). Keep the label taxonomy in
+[`.github/labels.yml`](../.github/labels.yml) aligned with release-note
+categories.
+
 ## Allowed Workflow Actions
 
 Keep the repository Actions policy restricted to GitHub-owned actions plus these
@@ -74,12 +83,18 @@ third-party action patterns used by CI and release workflows:
 
 - `aquasecurity/setup-trivy@3fb12ec12f41e471780db15c232d5dd185dcb514`
 - `aquasecurity/trivy-action@v0.36.0`
+- `actions/attest@v4`
 - `azure/setup-helm@v5`
 - `docker/build-push-action@v7`
 - `docker/login-action@v4`
 - `docker/metadata-action@v6`
 - `docker/setup-buildx-action@v4`
 - `dtolnay/rust-toolchain@stable`
+- `github/codeql-action/analyze@v4`
+- `github/codeql-action/init@v4`
+- `github/codeql-action/upload-sarif@v4`
+- `ossf/scorecard-action@v2.4.2`
+- `sigstore/cosign-installer@v4.1.2`
 - `softprops/action-gh-release@v3`
 - `Swatinem/rust-cache@v2`
 - `taiki-e/install-action@v2`

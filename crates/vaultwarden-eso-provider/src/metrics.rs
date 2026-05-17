@@ -126,7 +126,7 @@ impl AppMetrics {
 
         append_line(
             &mut output,
-            format_args!("# HELP bweso_build_info Bitwarden ESO Provider build information."),
+            format_args!("# HELP bweso_build_info Vaultwarden ESO Provider build information."),
         );
         append_line(&mut output, format_args!("# TYPE bweso_build_info gauge"));
         append_line(
@@ -677,6 +677,18 @@ mod tests {
         assert!(output.contains("bweso_policy_last_reload_success_timestamp_seconds "));
         // Redaction: counts only, never the selector keys themselves.
         assert!(!output.contains("id:"));
+    }
+
+    #[test]
+    fn failed_policy_reload_does_not_update_last_success_timestamp() {
+        let metrics = AppMetrics::new();
+        metrics.record_policy_reload("failure", 3, 1);
+
+        let output = metrics.render(true, None);
+
+        assert!(output.contains("bweso_policy_reloads_total{outcome=\"failure\"} 1"));
+        assert!(!output.contains("bweso_policy_last_reload_success_timestamp_seconds"));
+        assert!(!output.contains("bweso_policy_last_reload_success_age_seconds"));
     }
 
     #[test]

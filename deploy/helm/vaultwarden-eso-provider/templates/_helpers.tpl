@@ -92,6 +92,9 @@ Validate endpoint and credential configuration.
 {{- if and .Values.credentials.create .Values.credentials.existingSecret.name -}}
 {{- fail "configure either credentials.create or credentials.existingSecret.name, not both" -}}
 {{- end -}}
+{{- if and .Values.caBundle.pem .Values.caBundle.existingSecret.name -}}
+{{- fail "configure either caBundle.pem or caBundle.existingSecret.name, not both" -}}
+{{- end -}}
 {{- if and (not .Values.credentials.create) (not .Values.credentials.existingSecret.name) -}}
 {{- fail "configure credentials.existingSecret.name or set credentials.create=true" -}}
 {{- end -}}
@@ -100,6 +103,13 @@ Validate endpoint and credential configuration.
 {{- end -}}
 {{- if and .Values.auth.enabled .Values.auth.insecureAllowUnauthenticated -}}
 {{- fail "configure either auth.enabled=true or auth.insecureAllowUnauthenticated=true, not both" -}}
+{{- end -}}
+{{- $hasSelectorAllowList := or .Values.selectorPolicy.allowedKeys .Values.selectorPolicy.allowedKeyPrefixes .Values.selectorPolicy.configMap.name -}}
+{{- if and (not .Values.selectorPolicy.allowAllSelectors) (not $hasSelectorAllowList) -}}
+{{- fail "configure selectorPolicy.allowedKeys/allowedKeyPrefixes/configMap, or explicitly set selectorPolicy.allowAllSelectors=true when the provider account is already scoped to this trust boundary" -}}
+{{- end -}}
+{{- if and .Values.selectorPolicy.allowAllSelectors $hasSelectorAllowList -}}
+{{- fail "configure either selectorPolicy.allowAllSelectors=true or selectorPolicy allow-list entries, not both" -}}
 {{- end -}}
 {{- if .Values.credentials.create -}}
 {{- if not .Values.credentials.clientId -}}

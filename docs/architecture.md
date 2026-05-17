@@ -7,7 +7,8 @@ Bitwarden Password Manager items into Kubernetes without making vault item
 metadata the Kubernetes control plane. Vaultwarden is the primary target —
 it is free, self-hosted, and has no first-party Kubernetes secret integration
 of its own. Bitwarden Cloud Password Manager is supported as a secondary
-target for users who do not want to pay for Bitwarden Secrets Manager.
+target for teams that already store source-of-truth values in Password Manager
+vault items.
 
 ## Initial Shape
 
@@ -28,7 +29,8 @@ This project should own:
 - Local decryption and field extraction.
 - Master-password user-key unlock.
 - Bitwarden and Vaultwarden API-key login and sync.
-- Provider-level caching and rate limiting.
+- Provider-level caching, single-flight refresh, and global concurrency
+  shedding.
 - Provider-side selector policy to constrain which raw ESO `remoteRef.key` or
   `dataFrom.extract.key` values a deployment may resolve. This is an item-key
   boundary, not per-property authorization.

@@ -1,8 +1,11 @@
 # Live Testing
 
 The normal CI suite uses deterministic fixtures and local fake servers for both
-single-origin and split endpoint layouts. Live tests are skipped unless all
-required environment variables are set.
+single-origin and split endpoint layouts. Live tests are skipped unless
+`BWESO_TEST_LIVE=true` and all required `BWESO_TEST_*` environment variables are
+set. The test intentionally does not fall back to runtime `BWESO_*` variables,
+so a developer shell configured for a real provider deployment cannot
+accidentally run the live test against production credentials.
 
 ## Direct Provider Test
 
@@ -10,6 +13,7 @@ For Vaultwarden or a self-hosted single-origin Bitwarden server:
 
 ```bash
 BWESO_TEST_SINGLE_ORIGIN_URL="https://vaultwarden.example.com" \
+BWESO_TEST_LIVE=true \
 BWESO_TEST_CLIENT_ID="user.<uuid>" \
 BWESO_TEST_CLIENT_SECRET="..." \
 BWESO_TEST_MASTER_PASSWORD="..." \
@@ -23,6 +27,7 @@ For Bitwarden Cloud US:
 ```bash
 BWESO_TEST_IDENTITY_URL="https://identity.bitwarden.com" \
 BWESO_TEST_API_URL="https://api.bitwarden.com" \
+BWESO_TEST_LIVE=true \
 BWESO_TEST_CLIENT_ID="user.<uuid>" \
 BWESO_TEST_CLIENT_SECRET="..." \
 BWESO_TEST_MASTER_PASSWORD="..." \
@@ -43,6 +48,7 @@ secret fields:
 
 ```bash
 BWESO_TEST_SINGLE_ORIGIN_URL="https://vaultwarden.example.com" \
+BWESO_TEST_LIVE=true \
 BWESO_TEST_CLIENT_ID="user.<uuid>" \
 BWESO_TEST_CLIENT_SECRET="..." \
 BWESO_TEST_MASTER_PASSWORD="..." \
@@ -132,9 +138,9 @@ For a tagged public release, set the OCI chart explicitly so the smoke test
 does not use the local checkout:
 
 ```bash
-export BWESO_E2E_IMAGE_TAG="0.1.3"
+export BWESO_E2E_IMAGE_TAG="0.2.1"
 export BWESO_E2E_CHART_REF="oci://ghcr.io/ponchia/charts/vaultwarden-eso-provider"
-export BWESO_E2E_CHART_VERSION="0.1.3"
+export BWESO_E2E_CHART_VERSION="0.2.1"
 ```
 
 To smoke-test the `.tgz` attached to a GitHub Release instead, set

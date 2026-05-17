@@ -1,4 +1,4 @@
-The Bitwarden ESO Provider webhook is installed.
+The Vaultwarden ESO Provider webhook is installed.
 
 Create an External Secrets Operator SecretStore that points to:
 

@@ -83,6 +83,9 @@ webhook — are necessary, not optional.
 - Configure `selectorPolicy.allowedKeys` or `selectorPolicy.allowedKeyPrefixes`
   on the provider Deployment when the credential can see more vault items than
   the namespace should consume.
+- Treat the webhook bearer token as a read capability over every item selector
+  allowed by provider policy. Restrict who can read the token Secret and who can
+  create or edit `SecretStore` and `ExternalSecret` resources.
 - Treat provider selector policy as item-key scoped. It does not enforce
   per-property authorization inside an allowed item, so use exact `id:`
   allowlists and separate provider credentials when different namespaces should
@@ -91,7 +94,7 @@ webhook — are necessary, not optional.
   RBAC can control who may reference it, but the Bitwarden/Vaultwarden account
   and selector policy still define the data that can be read.
 
-## Unsupported Surfaces For v0.1.x
+## Unsupported Surfaces In The Current Line
 
 - Bitwarden Secrets Manager (`bws`) is a separate paid product surface and is
   not handled by this provider. Vaultwarden does not implement it.
@@ -100,13 +103,12 @@ webhook — are necessary, not optional.
   Cloud.
 - Attachment extraction fails explicitly. Use notes or custom fields for
   multiline material until attachment download/decryption is implemented.
-- Custom CA bundles for Vaultwarden installs on a private CA are not
-  configurable. TLS verification uses the system trust store only. Self-
-  hosted users on internal PKI must terminate TLS with a publicly-trusted
-  certificate (e.g., behind a reverse proxy with cert-manager) until this
-  lands.
+- Built-in TLS/mTLS on the ESO-to-provider webhook Service is not included in
+  the chart. Front the Service with a mesh, ingress, or gateway if pod-network
+  traffic is not a trusted boundary.
 - `/v1/resolve` has no per-source rate limiting. Bearer-token auth, the
-  16 KiB body cap, and single-flight cache refresh are the only mitigations.
+  16 KiB body cap, a global concurrency cap, and single-flight cache refresh are
+  the built-in mitigations.
 
 ## Open Questions
 

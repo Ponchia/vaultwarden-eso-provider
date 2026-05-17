@@ -68,13 +68,15 @@ worked end-to-end on this date," not as production soak time:
 - Vaultwarden single-origin: smoke-tested against the exact `v0.1.3` OCI
   release chart and image on a real k3s cluster on 2026-05-11, including
   selector policy, single-field and whole-item sync, target Secret recreation,
-  webhook restart, negative cases, and redacted metrics.
+  webhook restart, negative cases, and redacted metrics. This is historical
+  backend evidence reused by `v0.2.x` only for the unchanged login/sync protocol
+  path.
 - Bitwarden Cloud US split endpoints: smoke-tested against a dedicated live
   account and the exact `v0.1.1` release chart and image on a real k3s
   cluster on 2026-05-11, including selector policy, single-field and
   whole-item sync, target Secret recreation, webhook restart, negative cases,
-  and redacted metrics. `v0.1.3` keeps the same split-endpoint provider
-  protocol implementation covered by fake-server tests.
+  and redacted metrics. The current `v0.2.1` release keeps the same
+  split-endpoint provider protocol implementation covered by fake-server tests.
 
 The latest Vaultwarden live verification environment used:
 
@@ -98,6 +100,10 @@ Implemented:
   unprefixed bare keys are rejected with `400 validation`.
 - Provider-side selector policy based on exact raw keys and raw key prefixes.
   This policy gates item keys, not individual item properties.
+- Optional ConfigMap-backed selector policy hot reload.
+- Custom CA bundle support for private Vaultwarden CAs. Extra roots supplement
+  the bundled WebPKI trust roots.
+- Global `/v1/resolve` concurrency cap with `503 overloaded` load shedding.
 
 Not yet implemented:
 
@@ -106,9 +112,9 @@ Not yet implemented:
 - Shared organization item decryption that requires organization key handling.
   Selected shared items fail explicitly instead of silently returning partial
   results. For many teams this is the largest gap — pure-personal vaults or
-  dedicated per-user-key deployments are the realistic `v0.1.x` use cases.
-- Custom CA bundle support for Vaultwarden installs on a private CA. TLS
-  verification uses the system trust store only.
+  dedicated per-user-key deployments are the realistic current use cases.
 - Attachment metadata lookup, download, decryption, and mapping. Properties
   beginning with `attachment.` or `attachments.` fail explicitly.
 - Interactive two-factor or new-device challenge handling for API-key login.
+- Per-source rate limiting. The current concurrency cap is global, not per
+  namespace, token, or selector.

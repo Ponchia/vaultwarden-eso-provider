@@ -1,0 +1,33 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: bweso-eso-ingress
+  namespace: bweso-system
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: vaultwarden-eso-provider
+  policyTypes:
+    - Ingress
+  ingress:
+    # External Secrets Operator controller traffic to the webhook.
+    # Adjust namespace and pod labels to match your ESO install.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: external-secrets
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: external-secrets
+      ports:
+        - protocol: TCP
+          port: 8080
+    # Optional Prometheus scrape traffic when metrics.serviceMonitor.enabled=true.
+    # Delete this rule if Prometheus does not scrape the provider directly.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - protocol: TCP
+          port: 8080

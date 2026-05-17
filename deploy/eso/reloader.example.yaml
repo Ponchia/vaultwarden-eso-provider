@@ -2,6 +2,7 @@ apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: app-config
+  namespace: app
 spec:
   refreshPolicy: Periodic
   refreshInterval: 15m
@@ -24,7 +25,9 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: app
+  namespace: app
   annotations:
+    checkov.io/skip1: CKV_K8S_35=Reloader example intentionally demonstrates envFrom reload behavior; prefer file mounts for workloads that can reload mounted secret files.
     secret.reloader.stakater.com/reload: app-config
 spec:
   replicas: 2
@@ -38,19 +41,35 @@ spec:
     spec:
       automountServiceAccountToken: false
       securityContext:
+        runAsUser: 10001
+        runAsGroup: 10001
         runAsNonRoot: true
         seccompProfile:
           type: RuntimeDefault
       containers:
         - name: app
-          image: ghcr.io/example/app:0.1.0
+          image: ghcr.io/example/app@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8080
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
               drop:
                 - ALL
             readOnlyRootFilesystem: true
+            runAsUser: 10001
+            runAsGroup: 10001
             runAsNonRoot: true
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
           resources:
             requests:
               cpu: 25m
@@ -63,3 +82,16 @@ spec:
           envFrom:
             - secretRef:
                 name: app-config
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: app
+  namespace: app
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: app
+  policyTypes:
+    - Ingress
+    - Egress

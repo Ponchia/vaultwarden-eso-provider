@@ -16,9 +16,17 @@ spec:
         {{- with .Values.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
-      {{- with .Values.podAnnotations }}
+      {{- if or .Values.podAnnotations .Values.credentials.create .Values.caBundle.pem }}
       annotations:
+        {{- if .Values.credentials.create }}
+        checksum/credentials-secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- end }}
+        {{- if .Values.caBundle.pem }}
+        checksum/ca-bundle-secret: {{ include (print $.Template.BasePath "/ca-bundle-secret.yaml") . | sha256sum }}
+        {{- end }}
+        {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
+      {{- end }}
       {{- end }}
     spec:
       serviceAccountName: {{ include "bweso.serviceAccountName" . }}
@@ -94,6 +102,10 @@ spec:
             {{- if .Values.selectorPolicy.allowedKeyPrefixes }}
             - name: BWESO_ALLOWED_KEY_PREFIXES
               value: {{ join "," .Values.selectorPolicy.allowedKeyPrefixes | quote }}
+            {{- end }}
+            {{- if .Values.selectorPolicy.allowAllSelectors }}
+            - name: BWESO_ALLOW_ALL_SELECTORS
+              value: "true"
             {{- end }}
             {{- if .Values.selectorPolicy.configMap.name }}
             {{- if not (or .Values.selectorPolicy.configMap.keys.allowedKeys .Values.selectorPolicy.configMap.keys.allowedKeyPrefixes) }}
