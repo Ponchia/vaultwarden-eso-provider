@@ -24,7 +24,17 @@ must keep security, compatibility, and operational behavior clear.
 
 ## Development
 
-Install a stable Rust toolchain and Helm. Then run:
+Install a stable Rust toolchain and Helm. The fastest path is to use
+[mise](https://mise.jdx.dev/) and [just](https://just.systems/man/en/):
+
+```bash
+mise install
+mise run check
+```
+
+`mise.toml` pins the local tool versions used by the project, and `justfile`
+keeps the common commands discoverable with `mise run default` or `just --list`.
+Without mise/just, run the underlying commands directly:
 
 ```bash
 cargo fmt --all -- --check
@@ -35,6 +45,12 @@ cargo llvm-cov --locked --workspace --all-targets \
 helm lint deploy/helm/vaultwarden-eso-provider -f deploy/helm/lint-values.yaml
 helm template bweso deploy/helm/vaultwarden-eso-provider \
   -f deploy/helm/lint-values.yaml --namespace bweso-system
+```
+
+For a broader local CI mirror, run:
+
+```bash
+mise run ci
 ```
 
 `cargo llvm-cov` is the public CI coverage gate. The threshold is intentionally

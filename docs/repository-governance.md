@@ -65,6 +65,23 @@ maintainer.
 Do not require signed commits or a merge queue for now. Those can be added later
 once external contribution volume justifies them.
 
+## OpenSSF Scorecard Findings
+
+Treat Scorecard findings as triage signals, not automatic policy. The following
+open findings are accepted until the repository has more project history or a
+second active maintainer:
+
+- `Maintained`: the repository is public but still younger than 90 days.
+- `Code-Review`: there are not yet enough approved pull requests for Scorecard
+  to assign credit.
+- `Branch-Protection`: requiring one approving review or CODEOWNERS approval
+  would block a solo maintainer while administrator enforcement is enabled.
+- `CII-Best-Practices`: pursue the OpenSSF Best Practices Badge before `v1.0.0`;
+  it is not a `v0.3.0` release blocker.
+
+Dismiss these alerts in GitHub code scanning with this rationale after each
+Scorecard SARIF upload, unless the repository maintainer model has changed.
+
 ## Release Permissions
 
 Only maintainers should be able to push tags matching `v*`. Release tags publish

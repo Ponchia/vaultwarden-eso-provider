@@ -26,6 +26,9 @@ set -euo pipefail
 VW_URL="${1:?vaultwarden base URL required}"
 EMAIL="${2:?email required}"
 PASSWORD="${3:?master password required}"
+# Validate these inputs without logging them; the bootstrap flow below is still
+# intentionally unimplemented.
+: "${EMAIL}" "${PASSWORD}"
 
 echo "::group::wait for vaultwarden /alive" >&2
 for _ in $(seq 1 60); do
