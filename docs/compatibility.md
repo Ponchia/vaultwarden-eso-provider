@@ -4,8 +4,7 @@ This project targets the Bitwarden Password Manager vault protocol. The
 primary target is **Vaultwarden** (and self-hosted Bitwarden Password Manager
 exposed through a single origin); **Bitwarden Cloud Password Manager** is a
 supported second target through the split-endpoint mode. Bitwarden Secrets
-Manager (`bws`) is not in scope and is not implemented by Vaultwarden in any
-case.
+Manager (`bws`) is not in scope and is not available in Vaultwarden in any case.
 
 ## Endpoint Modes
 
@@ -105,10 +104,10 @@ Implemented:
   the bundled WebPKI trust roots.
 - Global `/v1/resolve` concurrency cap with `503 overloaded` load shedding.
 
-Not yet implemented:
+Unsupported surfaces:
 
 - Bitwarden Secrets Manager (`bws`) machine-account/project secret APIs.
-  Out of scope by design; not implemented by Vaultwarden in any case.
+  Out of scope by design; not available in Vaultwarden in any case.
 - Shared organization item decryption that requires organization key handling.
   Selected shared items fail explicitly instead of silently returning partial
   results. For many teams this is the largest gap — pure-personal vaults or

@@ -9,7 +9,7 @@ from the rules and automation for future releases.
 The project is an External Secrets Operator webhook provider for
 **Vaultwarden** (and self-hosted Bitwarden Password Manager), with Bitwarden
 Cloud Password Manager as a secondary supported target. Bitwarden Secrets
-Manager is out of scope and is not implemented by Vaultwarden in any case. The
+Manager is out of scope and is not available in Vaultwarden in any case. The
 repository, chart, image, and binary have already been renamed to
 `vaultwarden-eso-provider` in the `v0.2` release line.
 
