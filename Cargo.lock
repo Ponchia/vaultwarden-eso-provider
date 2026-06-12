@@ -234,7 +234,7 @@ checksum = "72f5acc6cb2ba439de613abc23857ec3d78374d8ed5ac84e9d11336e87da8649"
 
 [[package]]
 name = "bweso-bitwarden"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "aes",
  "argon2",
@@ -259,7 +259,7 @@ dependencies = [
 
 [[package]]
 name = "bweso-core"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "serde",
  "thiserror",
@@ -1675,7 +1675,7 @@ checksum = "ba73ea9cf16a25df0c8caa16c51acb937d5712a8429db78a3ee29d5dcacd3a65"
 
 [[package]]
 name = "vaultwarden-eso-provider"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "async-trait",

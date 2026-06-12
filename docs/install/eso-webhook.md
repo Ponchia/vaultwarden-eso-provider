@@ -46,7 +46,7 @@ unreleased `main` builds, clone the repository and use
 Set the release chart reference:
 
 ```bash
-CHART_VERSION=0.2.1
+CHART_VERSION=0.3.0
 CHART_REF="oci://ghcr.io/ponchia/charts/vaultwarden-eso-provider"
 ```
 

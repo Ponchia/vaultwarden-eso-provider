@@ -3,6 +3,18 @@
 This roadmap separates what shipped in the `v0.1.x` release line from
 follow-up work.
 
+## v0.3.0
+
+Released after `v0.2.1`:
+
+- **Deny-by-default selector policy**: public installs must configure reviewed
+  selectors or explicitly opt in to allow-all behavior.
+- **Deny-by-default NetworkPolicy rendering**: enabling the chart's
+  NetworkPolicy without cluster-specific ingress/egress rules no longer opens
+  traffic by default.
+- **Release evidence hardening**: release checks now verify GitHub Release
+  body/assets, chart evidence, signing, and attestations.
+
 ## v0.2.1
 
 Released after `v0.2.0`:

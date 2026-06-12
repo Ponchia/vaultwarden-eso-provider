@@ -75,7 +75,7 @@ worked end-to-end on this date," not as production soak time:
   account and the exact `v0.1.1` release chart and image on a real k3s
   cluster on 2026-05-11, including selector policy, single-field and
   whole-item sync, target Secret recreation, webhook restart, negative cases,
-  and redacted metrics. The current `v0.2.1` release keeps the same
+  and redacted metrics. The current `v0.3.0` release keeps the same
   split-endpoint provider protocol implementation covered by fake-server tests.
 
 The latest Vaultwarden live verification environment used:
