@@ -10,8 +10,9 @@ before release so generated notes land in the right category.
 
 ## Unreleased
 
-Recommended next version: `v0.3.0`, because the unreleased changes include
-pre-`v1.0.0` breaking runtime and chart defaults.
+- Nothing yet.
+
+## v0.3.0 - 2026-06-12
 
 - Breaking: hardened selector-policy defaults so installs must configure an
   allowlist or explicitly opt in to allow-all behavior.
@@ -22,6 +23,7 @@ pre-`v1.0.0` breaking runtime and chart defaults.
   additional zeroization for plaintext/decrypted buffers.
 - Tightened Helm NetworkPolicy defaults and added release evidence,
   signing, attestation, Scorecard, and release-note automation.
+- Bumped the Docker build image to `rust:1.96-alpine`.
 - Documentation: shortened the README and added a docs index, selector/policy
   reference, and GitHub Wiki strategy.
 
