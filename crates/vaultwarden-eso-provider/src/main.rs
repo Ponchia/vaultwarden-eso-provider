@@ -1306,7 +1306,7 @@ mod tests {
 
     #[test]
     fn provider_config_accepts_credentials_from_files() -> TestResult {
-        let dir = std::env::temp_dir().join(format!("bweso-provider-test-{}", std::process::id()));
+        let dir = unique_test_path("credentials", "d");
         std::fs::create_dir_all(&dir)?;
         let client_id_file = dir.join("client-id");
         let client_secret_file = dir.join("client-secret");
@@ -1434,22 +1434,33 @@ mod tests {
         assert!(error.to_string().contains("allowed_key must not be empty"));
     }
 
+    fn unique_test_path(tag: &str, extension: &str) -> PathBuf {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let unique = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let mut file_name = format!("bweso-{}-{unique}-{tag}", std::process::id());
+        if !extension.is_empty() {
+            file_name.push('.');
+            file_name.push_str(extension);
+        }
+
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../target/bweso-test-tmp")
+            .join(file_name)
+    }
+
     /// Unique temp file that removes itself on drop, so a panicking assertion
-    /// never leaks a file into the temp dir.
+    /// never leaves a scratch file behind.
     struct TempPolicyFile {
         path: PathBuf,
     }
 
     impl TempPolicyFile {
         fn new(tag: &str) -> Self {
-            use std::sync::atomic::{AtomicU64, Ordering};
-            static COUNTER: AtomicU64 = AtomicU64::new(0);
-            let unique = COUNTER.fetch_add(1, Ordering::Relaxed);
-            let path = std::env::temp_dir().join(format!(
-                "bweso-policy-{}-{}-{tag}.txt",
-                std::process::id(),
-                unique
-            ));
+            let path = unique_test_path(&format!("policy-{tag}"), "txt");
+            if let Some(parent) = path.parent() {
+                let _ = fs::create_dir_all(parent);
+            }
             Self { path }
         }
 

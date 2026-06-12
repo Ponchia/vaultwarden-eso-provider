@@ -94,16 +94,16 @@ deleted, old tags are yanked, no compatibility shim is kept. Targeted scope:
 
 Higher-effort follow-up work:
 
-- Finish the Vaultwarden-in-kind integration test. Scaffolding is in
-  `.github/workflows/kind-integration.yml` (workflow_dispatch only) and
-  `scripts/kind-vaultwarden-bootstrap.sh`. The blocker is the
-  user-registration crypto step: Vaultwarden's `/api/accounts/register`
-  expects a real Bitwarden registration payload (PBKDF2 master key,
-  stretched user key, RSA keypair) that is impractical to assemble in
-  shell. The recommended fix is a tiny `vaultwarden-test-bootstrap`
-  binary inside the workspace that uses the `bweso-bitwarden` crypto
-  primitives to register the user and plant an item, then the workflow
-  shells out to it.
+- Add disposable Vaultwarden-in-kind integration coverage. Do not keep a failing
+  workflow or dead shell bootstrap script in the release tree. The blocker is
+  the user-registration crypto step:
+  Vaultwarden's `/api/accounts/register` expects a real Bitwarden registration
+  payload (PBKDF2 master key, stretched user key, RSA keypair) that is
+  impractical to assemble in shell. The recommended implementation is a small
+  `vaultwarden-test-bootstrap` binary inside the workspace that uses the
+  `bweso-bitwarden` crypto primitives to register the user and plant an item,
+  followed by a workflow that runs the existing Helm + ESO smoke path against
+  that disposable Vaultwarden instance.
 - Add **organization / shared item decryption** after fixture coverage,
   key-handling review, and live verification against both Vaultwarden and
   Bitwarden Cloud. This is the gap that excludes most team-scale users today.
