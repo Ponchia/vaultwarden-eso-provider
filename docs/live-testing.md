@@ -145,9 +145,9 @@ For a tagged public release, set the OCI chart explicitly so the smoke test
 does not use the local checkout:
 
 ```bash
-export BWESO_E2E_IMAGE_TAG="0.2.1"
+export BWESO_E2E_IMAGE_TAG="0.3.0"
 export BWESO_E2E_CHART_REF="oci://ghcr.io/ponchia/charts/vaultwarden-eso-provider"
-export BWESO_E2E_CHART_VERSION="0.2.1"
+export BWESO_E2E_CHART_VERSION="0.3.0"
 ```
 
 To smoke-test the `.tgz` attached to a GitHub Release instead, set
