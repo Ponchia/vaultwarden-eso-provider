@@ -155,7 +155,7 @@ Read the [Threat Model](docs/threat-model.md) before production use.
 - Attachments fail explicitly with `unsupported_attachment`.
 - Interactive two-factor and new-device challenge flows are not supported for
   API-key login.
-- Per-source rate limiting is not implemented; the current cap is global
+- Per-source rate limiting is not available; the current cap is global
   `/v1/resolve` concurrency.
 - The provider does not restart application workloads after Secret changes.
   Use ESO refreshes, Stakater Reloader, checksum annotations, or your GitOps
