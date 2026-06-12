@@ -28,7 +28,7 @@ jobs:
         uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
 
       - name: Install cargo-llvm-cov
-        uses: taiki-e/install-action@7be9fd86bd1707236395105d6e9329dd1511a7e1 # v2
+        uses: taiki-e/install-action@d9be7d8cda89035c9c843f78bd44d4f72d8403d4 # v2
         with:
           tool: cargo-llvm-cov@0.8.6
 
@@ -78,11 +78,15 @@ jobs:
           -f deploy/helm/lint-values.yaml
           --namespace bweso-system
           --set-string 'selectorPolicy.configMap.name=bweso-selector-policy'
+          --set-string 'selectorPolicy.configMap.keys.allowedKeys=allowed-keys'
           --set-string 'selectorPolicy.configMap.keys.allowedKeyPrefixes=allowed-key-prefixes'
-          | grep -q 'BWESO_ALLOWED_KEYS_FILE'
+          | grep -Eq 'BWESO_ALLOWED_KEYS_FILE|BWESO_ALLOWED_KEY_PREFIXES_FILE'
 
       - name: Validate selector-policy Helm contracts
         run: bash scripts/helm-policy-contracts.sh
+
+      - name: Validate ESO selector-policy coverage contracts
+        run: bash scripts/eso-policy-coverage-contracts.sh
 
       - name: Render chart with ServiceMonitor
         run: >

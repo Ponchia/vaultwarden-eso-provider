@@ -15,8 +15,8 @@ fail() {
 
 truthy() {
   case "${1:-}" in
-    1 | true | TRUE | yes | YES | y | Y | on | ON) return 0 ;;
-    *) return 1 ;;
+  1 | true | TRUE | yes | YES | y | Y | on | ON) return 0 ;;
+  *) return 1 ;;
   esac
 }
 
@@ -43,6 +43,13 @@ first_env() {
     fi
   done
   return 1
+}
+
+random_uuid() {
+  local hex
+  hex="$(openssl rand -hex 16)"
+  printf '%s-%s-%s-%s-%s' \
+    "${hex:0:8}" "${hex:8:4}" "${hex:12:4}" "${hex:16:4}" "${hex:20:12}"
 }
 
 url_host() {
@@ -84,6 +91,10 @@ pull_secret="$(first_env BWESO_E2E_IMAGE_PULL_SECRET || true)"
 target_secret="bweso-smoke-secret"
 whole_target_secret="bweso-whole-item-secret"
 selector_file="$(first_env BWESO_E2E_SELECTOR_FILE || true)"
+policy_mode="$(first_env BWESO_E2E_POLICY_MODE || true)"
+policy_mode="${policy_mode:-configmap}"
+policy_configmap="$(first_env BWESO_E2E_POLICY_CONFIGMAP || true)"
+policy_configmap="${policy_configmap:-${release}-selector-policy}"
 cleanup_namespace=true
 if truthy "$(first_env BWESO_E2E_KEEP_NAMESPACE || true)"; then
   cleanup_namespace=false
@@ -107,10 +118,10 @@ network_policy_enabled="$(first_env BWESO_E2E_NETWORK_POLICY_ENABLED || true)"
 host_alias_ip="$(first_env BWESO_E2E_HOST_ALIAS_IP || true)"
 host_alias_hostname="$(first_env BWESO_E2E_HOST_ALIAS_HOSTNAME || true)"
 
-if [[ -n "${single_origin_url}" && ( -n "${identity_url}" || -n "${api_url}" ) ]]; then
+if [[ -n "${single_origin_url}" && (-n "${identity_url}" || -n "${api_url}") ]]; then
   fail "use either BWESO_TEST_SINGLE_ORIGIN_URL/BWESO_SINGLE_ORIGIN_URL or split identity/api URLs, not both"
 fi
-if [[ -z "${single_origin_url}" && ( -z "${identity_url}" || -z "${api_url}" ) ]]; then
+if [[ -z "${single_origin_url}" && (-z "${identity_url}" || -z "${api_url}") ]]; then
   fail "set a single-origin URL or both split endpoint URLs"
 fi
 [[ -n "${client_id}" ]] || fail "set BWESO_TEST_CLIENT_ID or BWESO_CLIENT_ID"
@@ -118,10 +129,14 @@ fi
 [[ -n "${master_password}" ]] || fail "set BWESO_TEST_MASTER_PASSWORD or BWESO_MASTER_PASSWORD"
 if [[ -n "${network_policy_enabled}" ]]; then
   case "${network_policy_enabled}" in
-    true | false) ;;
-    *) fail "BWESO_E2E_NETWORK_POLICY_ENABLED must be true or false" ;;
+  true | false) ;;
+  *) fail "BWESO_E2E_NETWORK_POLICY_ENABLED must be true or false" ;;
   esac
 fi
+case "${policy_mode}" in
+configmap | inline) ;;
+*) fail "BWESO_E2E_POLICY_MODE must be configmap or inline" ;;
+esac
 if [[ -n "${host_alias_ip}" && -z "${host_alias_hostname}" ]]; then
   [[ -n "${single_origin_url}" ]] || fail "set BWESO_E2E_HOST_ALIAS_HOSTNAME when using split endpoints"
   host_alias_hostname="$(url_host "${single_origin_url}")"
@@ -148,7 +163,7 @@ cleanup() {
     log "cleaning namespace ${namespace}"
     "${kubectl_cmd[@]}" delete namespace "${namespace}" --ignore-not-found=true --wait=false >/dev/null
     local deadline=$((SECONDS + 120))
-    while (( SECONDS < deadline )); do
+    while ((SECONDS < deadline)); do
       if ! "${kubectl_cmd[@]}" get namespace "${namespace}" >/dev/null 2>&1; then
         return 0
       fi
@@ -206,11 +221,34 @@ property="$(jq -r '.property // empty' "${selector_file}")"
 [[ -n "${item_key}" ]] || fail "selector must contain .key"
 [[ -n "${property}" ]] || fail "selector must contain .property for ESO value extraction"
 missing_property="__bweso_missing_property_$(date +%s)"
-missing_item="__bweso_missing_item_$(date +%s)"
-denied_item="__bweso_policy_denied_item_$(date +%s)"
+missing_item="id:$(random_uuid)"
+denied_item="id:$(random_uuid)"
+
+write_policy_file() {
+  local include_denied="$1"
+  {
+    printf '%s\n' "${item_key}"
+    printf '%s\n' "${missing_item}"
+    if [[ "${include_denied}" == true ]]; then
+      printf '%s\n' "${denied_item}"
+    fi
+  } >"${tmp_dir}/allowed-keys"
+}
+
+apply_policy_configmap() {
+  local include_denied="$1"
+  write_policy_file "${include_denied}"
+  "${kubectl_cmd[@]}" -n "${namespace}" create configmap "${policy_configmap}" \
+    --from-file=allowed-keys="${tmp_dir}/allowed-keys" \
+    --dry-run=client -o yaml | "${kubectl_cmd[@]}" apply -f - >/dev/null
+}
 
 log "creating namespace ${namespace}"
 "${kubectl_cmd[@]}" create namespace "${namespace}" --dry-run=client -o yaml | "${kubectl_cmd[@]}" apply -f - >/dev/null
+if [[ "${policy_mode}" == "configmap" ]]; then
+  log "creating selector-policy ConfigMap ${policy_configmap}"
+  apply_policy_configmap false
+fi
 
 ghcr_token="$(first_env BWESO_E2E_GHCR_TOKEN || true)"
 if [[ -n "${ghcr_token}" ]]; then
@@ -251,9 +289,19 @@ helm_args=(
   --set-string "image.tag=${image_tag}"
   --set-string "credentials.existingSecret.name=${credentials_secret}"
   --set-string "config.cacheTtlSeconds=2"
-  --set-string "selectorPolicy.allowedKeys[0]=${item_key}"
-  --set-string "selectorPolicy.allowedKeys[1]=${missing_item}"
 )
+if [[ "${policy_mode}" == "inline" ]]; then
+  helm_args+=(
+    --set-string "selectorPolicy.allowedKeys[0]=${item_key}"
+    --set-string "selectorPolicy.allowedKeys[1]=${missing_item}"
+  )
+else
+  helm_args+=(
+    --set-string "selectorPolicy.configMap.name=${policy_configmap}"
+    --set-string "selectorPolicy.configMap.keys.allowedKeys=allowed-keys"
+    --set "selectorPolicy.reloadIntervalSeconds=2"
+  )
+fi
 if [[ -n "${chart_version}" ]]; then
   helm_args+=(--version "${chart_version}")
 fi
@@ -301,7 +349,7 @@ wait_for_probe() {
   local expected="$2"
   local deadline=$((SECONDS + 60))
   local status
-  while (( SECONDS < deadline )); do
+  while ((SECONDS < deadline)); do
     status="$(curl -sS -o /dev/null -w '%{http_code}' "http://127.0.0.1:${local_port}${path}" || true)"
     if [[ "${status}" == "${expected}" ]]; then
       return 0
@@ -317,7 +365,7 @@ wait_for_probe() {
 fetch_metrics() {
   local output_file="$1"
   local deadline=$((SECONDS + 60))
-  while (( SECONDS < deadline )); do
+  while ((SECONDS < deadline)); do
     if curl -fsS "http://127.0.0.1:${local_port}/metrics" >"${output_file}"; then
       return 0
     fi
@@ -329,43 +377,80 @@ fetch_metrics() {
   fail "metrics endpoint did not return a successful response"
 }
 
+direct_resolve_status() {
+  local key="$1"
+  local requested_property="$2"
+  local body="$3"
+  local output="$4"
+
+  jq -n --arg key "${key}" --arg property "${requested_property}" \
+    '{remoteRef: {key: $key, property: $property}}' >"${body}"
+  curl -sS \
+    -H 'Content-Type: application/json' \
+    -H "Authorization: Bearer ${webhook_token}" \
+    -o "${output}" \
+    -w '%{http_code}' \
+    -d @"${body}" \
+    "http://127.0.0.1:${local_port}/v1/resolve" || true
+}
+
+assert_error_response_redacted() {
+  local response="$1"
+  local requested_key="$2"
+  local requested_property="$3"
+
+  jq -e '.error | type == "string" and length > 0' "${response}" >/dev/null ||
+    fail "error response did not contain a public error string"
+  if [[ "${#requested_key}" -ge 8 ]] && grep -Fq "${requested_key}" "${response}"; then
+    fail "error response leaked requested vault item key"
+  fi
+  if [[ "${#requested_property}" -ge 4 ]] && grep -Fq "${requested_property}" "${response}"; then
+    fail "error response leaked requested property"
+  fi
+}
+
 record_direct_metric_observations() {
   local success_body="${tmp_dir}/resolve-success-request.json"
   local success_response="${tmp_dir}/resolve-success-response.json"
   local error_body="${tmp_dir}/resolve-error-request.json"
+  local error_response="${tmp_dir}/resolve-error-response.json"
   local denied_body="${tmp_dir}/resolve-denied-request.json"
+  local denied_response="${tmp_dir}/resolve-denied-response.json"
   local status
 
-  jq -n --arg key "${item_key}" --arg property "${property}" \
-    '{remoteRef: {key: $key, property: $property}}' >"${success_body}"
-  curl -fsS \
-    -H 'Content-Type: application/json' \
-    -H "Authorization: Bearer ${webhook_token}" \
-    -o "${success_response}" \
-    -d @"${success_body}" \
-    "http://127.0.0.1:${local_port}/v1/resolve" >/dev/null
+  status="$(direct_resolve_status "${item_key}" "${property}" "${success_body}" "${success_response}")"
+  [[ "${status}" == "200" ]] || fail "direct successful resolve returned HTTP ${status}, expected 200"
 
-  jq -n --arg key "${item_key}" --arg property "${missing_property}" \
-    '{remoteRef: {key: $key, property: $property}}' >"${error_body}"
-  status="$(curl -sS \
-    -H 'Content-Type: application/json' \
-    -H "Authorization: Bearer ${webhook_token}" \
-    -o /dev/null \
-    -w '%{http_code}' \
-    -d @"${error_body}" \
-    "http://127.0.0.1:${local_port}/v1/resolve" || true)"
+  status="$(direct_resolve_status "${item_key}" "${missing_property}" "${error_body}" "${error_response}")"
   [[ "${status}" == "404" ]] || fail "direct missing-property resolve returned HTTP ${status}, expected 404"
+  assert_error_response_redacted "${error_response}" "${item_key}" "${missing_property}"
 
-  jq -n --arg key "${denied_item}" --arg property "${property}" \
-    '{remoteRef: {key: $key, property: $property}}' >"${denied_body}"
-  status="$(curl -sS \
-    -H 'Content-Type: application/json' \
-    -H "Authorization: Bearer ${webhook_token}" \
-    -o /dev/null \
-    -w '%{http_code}' \
-    -d @"${denied_body}" \
-    "http://127.0.0.1:${local_port}/v1/resolve" || true)"
+  status="$(direct_resolve_status "${denied_item}" "${property}" "${denied_body}" "${denied_response}")"
   [[ "${status}" == "403" ]] || fail "direct policy-denied resolve returned HTTP ${status}, expected 403"
+  assert_error_response_redacted "${denied_response}" "${denied_item}" "${property}"
+}
+
+verify_policy_hot_reload() {
+  local body="${tmp_dir}/resolve-reloaded-policy-request.json"
+  local response="${tmp_dir}/resolve-reloaded-policy-response.json"
+  local status
+  local deadline=$((SECONDS + 180))
+
+  [[ "${policy_mode}" == "configmap" ]] || return 0
+
+  log "checking selector-policy ConfigMap hot reload"
+  apply_policy_configmap true
+  while ((SECONDS < deadline)); do
+    status="$(direct_resolve_status "${denied_item}" "${property}" "${body}" "${response}")"
+    if [[ "${status}" == "404" ]]; then
+      assert_error_response_redacted "${response}" "${denied_item}" "${property}"
+      return 0
+    fi
+    [[ "${status}" == "403" ]] || fail "policy hot reload returned HTTP ${status}, expected 403 until reload or 404 after reload"
+    sleep 2
+  done
+
+  fail "selector-policy ConfigMap update was not observed by the provider before timeout"
 }
 
 start_port_forward
@@ -559,7 +644,7 @@ wait_secret_nonempty() {
   local key="$2"
   local deadline=$((SECONDS + 120))
   local encoded_value_len
-  while (( SECONDS < deadline )); do
+  while ((SECONDS < deadline)); do
     encoded_value_len="$("${kubectl_cmd[@]}" -n "${namespace}" get secret "${name}" \
       -o "jsonpath={.data.${key}}" 2>/dev/null | wc -c | tr -d ' ')"
     if [[ "${encoded_value_len}" -gt 0 ]]; then
@@ -573,9 +658,9 @@ wait_secret_nonempty() {
 wait_secret_has_data() {
   local name="$1"
   local deadline=$((SECONDS + 120))
-  while (( SECONDS < deadline )); do
-    if "${kubectl_cmd[@]}" -n "${namespace}" get secret "${name}" -o json 2>/dev/null \
-      | jq -e '.data | length > 0' >/dev/null 2>&1; then
+  while ((SECONDS < deadline)); do
+    if "${kubectl_cmd[@]}" -n "${namespace}" get secret "${name}" -o json 2>/dev/null |
+      jq -e '.data | length > 0' >/dev/null 2>&1; then
       return 0
     fi
     sleep 2
@@ -613,10 +698,10 @@ wait_negative_absent() {
   local name="$1"
   local deadline=$((SECONDS + 120))
   local status
-  while (( SECONDS < deadline )); do
-    status="$("${kubectl_cmd[@]}" -n "${namespace}" get externalsecret "${name}" -o json \
-      | jq -r '.status.conditions[]? | select(.type == "Ready") | "\(.status) \(.reason)"' \
-      | tail -n 1)"
+  while ((SECONDS < deadline)); do
+    status="$("${kubectl_cmd[@]}" -n "${namespace}" get externalsecret "${name}" -o json |
+      jq -r '.status.conditions[]? | select(.type == "Ready") | "\(.status) \(.reason)"' |
+      tail -n 1)"
     if [[ "${status}" == "False SecretSyncedError" || "${status}" == "True SecretDeleted" ]]; then
       return 0
     fi
@@ -644,6 +729,7 @@ start_port_forward
 wait_for_probe /livez 204
 wait_for_probe /readyz 204
 record_direct_metric_observations
+verify_policy_hot_reload
 metrics_file="${tmp_dir}/metrics.txt"
 fetch_metrics "${metrics_file}"
 grep -Fq 'bweso_ready 1' "${metrics_file}" || fail "metrics did not report ready state"
@@ -653,6 +739,13 @@ grep -Fq 'outcome="success"' "${metrics_file}" || fail "metrics did not include 
 grep -Fq 'outcome="error"' "${metrics_file}" || fail "metrics did not include expected error outcomes"
 grep -Fq 'error_kind="policy_denied"' "${metrics_file}" || fail "metrics did not include policy-denied outcomes"
 grep -Fq 'bweso_cache_refreshes_total' "${metrics_file}" || fail "metrics did not include cache refresh counters"
+if [[ "${policy_mode}" == "configmap" ]]; then
+  grep -Fq 'bweso_policy_reloads_total' "${metrics_file}" || fail "metrics did not include policy reload counters"
+  grep -Fq 'bweso_policy_reloads_total{outcome="failure"} 0' "${metrics_file}" ||
+    fail "metrics did not report zero policy reload failures"
+  grep -Fq 'bweso_policy_active_allowed_keys 3' "${metrics_file}" ||
+    fail "metrics did not report the hot-reloaded selector-policy size"
+fi
 if [[ "${#item_key}" -ge 8 ]] && grep -Fq "${item_key}" "${metrics_file}"; then
   fail "metrics leaked selected vault item key"
 fi

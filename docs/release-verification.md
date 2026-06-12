@@ -5,6 +5,10 @@ an OCI Helm chart, a downloadable chart archive, generated release notes, and
 release evidence. Older tags may have fewer evidence artifacts; use the exact
 GitHub Release notes for the tag you install.
 
+The release workflow verifies the GitHub Release after upload. A current tag
+must have a non-empty release body, the chart archive, the chart Sigstore
+bundle, and the digest/checksum evidence referenced below.
+
 Use the exact image digest, chart digest, and chart archive SHA256 from the
 release notes.
 

@@ -1864,35 +1864,11 @@ frW69DSxg6/fcNRyvdTH+twvVnzH
         listener.set_nonblocking(true)?;
         let address = listener.local_addr()?;
         let handle = std::thread::spawn(move || -> std::io::Result<()> {
-            let deadline = Instant::now() + Duration::from_secs(2);
-            let (mut stream, _) = loop {
-                match listener.accept() {
-                    Ok(connection) => break connection,
-                    Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
-                        if Instant::now() >= deadline {
-                            return Err(std::io::Error::new(
-                                std::io::ErrorKind::TimedOut,
-                                "healthcheck did not connect to test server",
-                            ));
-                        }
-                        std::thread::sleep(Duration::from_millis(10));
-                    }
-                    Err(error) => return Err(error),
-                }
-            };
+            let mut stream = accept_healthcheck_connection(&listener)?;
             stream.set_nonblocking(false)?;
             stream.set_read_timeout(Some(Duration::from_secs(2)))?;
             stream.set_write_timeout(Some(Duration::from_secs(2)))?;
-            let mut request = [0_u8; 512];
-            let len = stream.read(&mut request)?;
-            let request = std::str::from_utf8(&request[..len])
-                .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?;
-            if !request.starts_with("GET /livez?ready=1 HTTP/1.1\r\n") {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::InvalidData,
-                    format!("unexpected healthcheck request: {request:?}"),
-                ));
-            }
+            assert_healthcheck_request(&mut stream, "GET /livez?ready=1 HTTP/1.1\r\n")?;
             stream.write_all(b"HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n")?;
             Ok(())
         });
@@ -1902,6 +1878,45 @@ frW69DSxg6/fcNRyvdTH+twvVnzH
             .join()
             .map_err(|_| "healthcheck test server panicked")??;
         Ok(())
+    }
+
+    fn accept_healthcheck_connection(
+        listener: &std::net::TcpListener,
+    ) -> std::io::Result<TcpStream> {
+        let deadline = Instant::now() + Duration::from_secs(2);
+        loop {
+            match listener.accept() {
+                Ok((stream, _)) => return Ok(stream),
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                    if Instant::now() >= deadline {
+                        return Err(std::io::Error::new(
+                            std::io::ErrorKind::TimedOut,
+                            "healthcheck did not connect to test server",
+                        ));
+                    }
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+                Err(error) => return Err(error),
+            }
+        }
+    }
+
+    fn assert_healthcheck_request(
+        stream: &mut TcpStream,
+        expected_prefix: &str,
+    ) -> std::io::Result<()> {
+        let mut request = [0_u8; 512];
+        let len = stream.read(&mut request)?;
+        let request = std::str::from_utf8(&request[..len])
+            .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?;
+        if request.starts_with(expected_prefix) {
+            return Ok(());
+        }
+
+        Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("unexpected healthcheck request: {request:?}"),
+        ))
     }
 
     #[test]

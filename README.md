@@ -92,6 +92,15 @@ kubectl -n bweso-system create secret generic bweso-credentials \
   --from-literal=webhook-token='generate-a-long-random-token'
 ```
 
+Create a selector-policy ConfigMap with the vault item IDs this provider may
+resolve. ConfigMap-backed policy hot-reloads, so adding a reviewed item later
+does not require a provider restart:
+
+```bash
+kubectl -n bweso-system create configmap bweso-selector-policy \
+  --from-literal=allowed-keys='id:00000000-0000-0000-0000-000000000000'
+```
+
 Install the released chart for a Vaultwarden or single-origin self-hosted
 Bitwarden server:
 
@@ -104,7 +113,7 @@ helm upgrade --install bweso "${CHART_REF}" \
   --version "${CHART_VERSION}" \
   --set-string config.singleOriginUrl='https://vaultwarden.example.com' \
   --set-string credentials.existingSecret.name='bweso-credentials' \
-  --set-string selectorPolicy.allowedKeys[0]='id:00000000-0000-0000-0000-000000000000'
+  --set-string selectorPolicy.configMap.name='bweso-selector-policy'
 ```
 
 Bitwarden Cloud uses split identity/API endpoints instead. See

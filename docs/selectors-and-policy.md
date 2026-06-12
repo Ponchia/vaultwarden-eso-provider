@@ -62,7 +62,9 @@ manifests, RBAC, and GitOps review prevent it.
 For strict isolation, prefer:
 
 - one dedicated provider account per namespace or trust boundary;
-- exact `id:` entries in `selectorPolicy.allowedKeys`;
+- exact `id:` entries in the selector policy, with a ConfigMap-backed policy
+  preferred for GitOps-managed installs and inline `selectorPolicy.allowedKeys`
+  only for static policy;
 - namespace-local `SecretStore` resources;
 - token-only webhook auth Secrets in workload namespaces;
 - no shared `ClusterSecretStore` unless every namespace that can reference it
@@ -129,6 +131,45 @@ Alert on:
 
 - `sum(rate(bweso_policy_reloads_total{outcome="failure"}[5m])) > 0`
 - `bweso_policy_last_reload_success_age_seconds > 600`
+
+## Static Coverage Check
+
+For GitOps repositories, render the provider Deployment, selector-policy
+ConfigMap, and `ExternalSecret` resources together and run:
+
+```bash
+scripts/eso-policy-coverage.rb rendered-manifests/
+```
+
+The checker parses local YAML only and never reads Kubernetes Secret data. It
+also accepts `-` for stdin and expands Kubernetes `List` documents, so raw
+audit output works:
+
+```bash
+kubectl get deployment,configmap,externalsecret,secretstore,clustersecretstore \
+  -A --show-managed-fields=false -o yaml |
+  scripts/eso-policy-coverage.rb -
+```
+
+It verifies that every `remoteRef.key` and `dataFrom.extract.key` is covered by
+the exact keys or prefixes visible in the rendered provider policy. Findings
+redact selector values by default; use `--show-keys` only in a trusted local
+terminal.
+
+When the rendered set includes `SecretStore` / `ClusterSecretStore` resources,
+the checker ignores ExternalSecrets that reference a rendered non-webhook store.
+For mixed webhook providers or partial render sets, scope explicitly with
+`--store app/bitwarden-vault` or `--cluster-store shared-bitwarden-vault`.
+
+If one rendered output contains multiple provider Deployments, run the checker
+once per trust boundary with `--provider bweso-system/bweso`. Pair that with
+`--store` or `--cluster-store` whenever the same rendered bundle contains
+multiple SecretStores or shared trust boundaries.
+
+By default, the checker fails when it finds no selected ExternalSecret keys or
+no provider Deployment / explicit offline policy. This catches broken filters
+and incomplete `kubectl` output. Pass `--allow-empty` only for deliberate
+policy-only linting.
 
 See [Observability](operations/observability.md) for the full metric list and
 [ADR 0004](decisions/0004-hot-reloadable-selector-policy.md) for the design

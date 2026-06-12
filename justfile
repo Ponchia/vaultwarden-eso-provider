@@ -37,6 +37,7 @@ helm:
   helm lint {{chart}} -f {{lint_values}}
   helm template bweso {{chart}} -f {{lint_values}} --namespace {{namespace}} >/dev/null
   bash scripts/helm-policy-contracts.sh
+  bash scripts/eso-policy-coverage-contracts.sh
 
 # Validate Markdown and static YAML/JSON examples.
 docs:

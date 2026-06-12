@@ -50,6 +50,15 @@ CHART_VERSION=0.2.1
 CHART_REF="oci://ghcr.io/ponchia/charts/vaultwarden-eso-provider"
 ```
 
+Create the selector-policy ConfigMap before installing the chart. Use exact
+`id:` selectors in production. ConfigMap-backed policy is the recommended
+GitOps path because updates are picked up by the provider without a restart:
+
+```bash
+kubectl -n bweso-system create configmap bweso-selector-policy \
+  --from-literal=allowed-keys='id:00000000-0000-0000-0000-000000000000'
+```
+
 Install the webhook for Vaultwarden or single-origin self-hosted Bitwarden:
 
 ```bash
@@ -59,7 +68,7 @@ helm upgrade --install bweso "${CHART_REF}" \
   --set-string image.tag="${CHART_VERSION}" \
   --set-string config.singleOriginUrl='https://vaultwarden.example.com' \
   --set-string credentials.existingSecret.name=bweso-credentials \
-  --set-string selectorPolicy.allowedKeys[0]='id:00000000-0000-0000-0000-000000000000'
+  --set-string selectorPolicy.configMap.name=bweso-selector-policy
 ```
 
 Install the webhook for Bitwarden Cloud US:
@@ -72,7 +81,7 @@ helm upgrade --install bweso "${CHART_REF}" \
   --set-string config.identityUrl='https://identity.bitwarden.com' \
   --set-string config.apiUrl='https://api.bitwarden.com' \
   --set-string credentials.existingSecret.name=bweso-credentials \
-  --set-string selectorPolicy.allowedKeys[0]='id:00000000-0000-0000-0000-000000000000'
+  --set-string selectorPolicy.configMap.name=bweso-selector-policy
 ```
 
 Use `https://identity.bitwarden.eu` and `https://api.bitwarden.eu` for
@@ -91,13 +100,15 @@ Prometheus, DNS, and your Bitwarden/Vaultwarden backend. If the provider must
 reach an in-cluster ingress or private address while still using the public
 Vaultwarden hostname for TLS and HTTP host routing, configure `hostAliases`.
 
-`selectorPolicy.allowedKeys` and `selectorPolicy.allowedKeyPrefixes` are
-provider-side allowlists for the raw `remoteRef.key`. Public installs should
-configure at least one allowlist entry or a ConfigMap-backed allowlist. Running
-without a selector policy requires the explicit `selectorPolicy.allowAllSelectors=true`
-escape hatch and is acceptable only when the Bitwarden/Vaultwarden account
-itself is already scoped to the trust boundary. Every non-matching selector
-returns `403` without echoing the requested key.
+`selectorPolicy.configMap` is the recommended production allowlist source.
+`selectorPolicy.allowedKeys` and `selectorPolicy.allowedKeyPrefixes` are also
+available, but inline values are read only at process start. Public installs
+should configure at least one allowlist entry or a ConfigMap-backed allowlist.
+Running without a selector policy requires the explicit
+`selectorPolicy.allowAllSelectors=true` escape hatch and is acceptable only when
+the Bitwarden/Vaultwarden account itself is already scoped to the trust
+boundary. Every non-matching selector returns `403` without echoing the
+requested key.
 
 Selector policy is item-key scoped, not property scoped. If a namespace can
 request an allowed `remoteRef.key` or `dataFrom.extract.key`, it can request any
@@ -113,8 +124,8 @@ syntax, property names, policy scope, and ConfigMap-backed hot reload behavior.
 For each namespace or trust boundary:
 
 - use a dedicated Bitwarden/Vaultwarden account or API key;
-- install the provider with exact `id:<item-id>` entries in
-  `selectorPolicy.allowedKeys`;
+- install the provider with a ConfigMap-backed selector policy containing exact
+  `id:<item-id>` entries;
 - use a namespace-local `SecretStore`;
 - put only the webhook bearer token in workload namespaces;
 - keep the Bitwarden/Vaultwarden client secret and master password in the
