@@ -339,6 +339,9 @@ jobs:
         with:
           version: ${{ env.HELM_VERSION }}
 
+      - name: Set up Docker Buildx for chart inspection
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4
+
       - name: Package chart
         run: |
           mkdir -p dist
@@ -365,8 +368,41 @@ jobs:
           fi
 
           oci_registry="oci://ghcr.io/${owner}/charts"
-          helm push "$chart_archive" "$oci_registry" | tee /tmp/helm-push.txt
-          digest="$(awk '/Digest:/ { print $2; exit }' /tmp/helm-push.txt)"
+          version="${GITHUB_REF_NAME#v}"
+          chart_ref="ghcr.io/${owner}/charts/vaultwarden-eso-provider:${version}"
+
+          set +e
+          helm push "$chart_archive" "$oci_registry" > /tmp/helm-push.txt 2>&1
+          status=$?
+          set -e
+          cat /tmp/helm-push.txt
+
+          digest="$(grep -Eo 'sha256:[0-9a-f]{64}' /tmp/helm-push.txt | tail -n 1 || true)"
+          if [ "$status" -ne 0 ]; then
+            existing_dir="$(mktemp -d)"
+            if ! helm pull "${oci_registry}/vaultwarden-eso-provider" \
+              --version "$version" \
+              --destination "$existing_dir"; then
+              exit "$status"
+            fi
+
+            existing_archive="${existing_dir}/vaultwarden-eso-provider-${version}.tgz"
+            if [ ! -f "$existing_archive" ] || ! cmp -s "$chart_archive" "$existing_archive"; then
+              echo "Existing OCI chart does not match packaged chart" >&2
+              exit "$status"
+            fi
+
+            echo "Chart already exists with matching archive; continuing with existing OCI digest." \
+              | tee -a /tmp/helm-push.txt
+          fi
+
+          if [ -z "$digest" ]; then
+            digest="$(
+              docker buildx imagetools inspect "$chart_ref" \
+                | awk '/^Digest:/ { print $2; exit }'
+            )"
+          fi
+
           if [ -z "$digest" ]; then
             echo "Failed to capture OCI chart digest" >&2
             exit 1
