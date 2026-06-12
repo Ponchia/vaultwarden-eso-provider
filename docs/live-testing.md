@@ -74,22 +74,29 @@ creates namespace-local `SecretStore` resources for single-field and whole-item
 sync, verifies `ExternalSecret` sync through `data` and `dataFrom.extract`,
 checks target Secret recreation with identical data, restarts the webhook
 Deployment, forces another sync, checks expected error cases for missing
-items/properties and selector-policy denial, and verifies `/livez`, `/readyz`,
-`/metrics`, successful/error/cache metrics, and metric redaction. It does not
-print decrypted values.
+items/properties and selector-policy denial, verifies ConfigMap-backed
+selector-policy hot reload by changing a denied selector into an allowed
+missing item without restarting the provider, and verifies `/livez`, `/readyz`,
+`/metrics`, successful/error/cache/policy-reload metrics, and metric
+redaction. It does not print decrypted values.
 
 Required:
 
-- `kubectl`, `helm`, `jq`, `curl`, and `cargo`.
+- `kubectl`, `helm`, `jq`, `curl`, `openssl`, and `cargo`.
 - External Secrets Operator already installed in the target cluster.
 - A pushed image tag for the webhook.
 - Live test credentials through the `BWESO_TEST_*` variables above, or the
   equivalent runtime `BWESO_*` variables.
 
-The smoke test installs the chart with `selectorPolicy.allowedKeys` containing
+The smoke test installs the chart with a ConfigMap-backed selector policy by
+default (`BWESO_E2E_POLICY_MODE=configmap`). The ConfigMap initially contains
 only the selected item and one deliberate missing item. That proves allowed
 selectors still sync and disallowed selectors fail with redacted `403`
-responses.
+responses. The script then updates the ConfigMap to include the previously
+denied item and waits until the provider returns `404 not_found` instead of
+`403 policy_denied`, proving the no-restart hot-reload path. Set
+`BWESO_E2E_POLICY_MODE=inline` only when testing old chart behavior where policy
+changes intentionally require a provider restart.
 
 The smoke test uses `creationPolicy: Orphan`, `deletionPolicy: Retain`, and
 template `mergePolicy: Merge`, matching the recommended migration policy for

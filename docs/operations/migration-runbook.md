@@ -44,8 +44,10 @@ Leave these with their existing owners unless you have a separate design:
    names.
 
 4. Install the provider with a dedicated Bitwarden/Vaultwarden user. Configure
-   `selectorPolicy.allowedKeys` or `selectorPolicy.allowedKeyPrefixes` if the
-   account can see more items than a namespace should read.
+   a ConfigMap-backed selector policy with exact `id:` entries for the migrated
+   items if the account can see more items than a namespace should read. Use
+   inline `selectorPolicy.allowedKeys` / `selectorPolicy.allowedKeyPrefixes`
+   only for static policy that can wait for a provider rollout.
 
 5. For each namespace using a namespace-local `SecretStore`, create a
    token-only Secret containing the provider webhook token:

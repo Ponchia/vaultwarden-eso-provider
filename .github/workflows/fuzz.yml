@@ -20,6 +20,8 @@ jobs:
     name: encrypted_string_from_str
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      CARGO_FUZZ_VERSION: 0.13.2
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -35,11 +37,19 @@ jobs:
           workspaces: crates/bweso-bitwarden/fuzz -> target
 
       - name: Install cargo-fuzz
-        run: cargo install cargo-fuzz --locked --version 0.13.1
+        run: cargo install cargo-fuzz --locked --version "${CARGO_FUZZ_VERSION}"
 
       - name: Run fuzz target
+        env:
+          DURATION_SECONDS: ${{ github.event.inputs.duration_seconds || '300' }}
         run: |
-          duration="${{ github.event.inputs.duration_seconds || '300' }}"
+          duration="${DURATION_SECONDS}"
+          case "$duration" in
+            ''|*[!0-9]*)
+              echo "::error::duration_seconds must be a positive integer"
+              exit 1
+              ;;
+          esac
           cd crates/bweso-bitwarden/fuzz
           cargo +nightly fuzz run encrypted_string_from_str \
             -- -max_total_time="$duration" -timeout=10
