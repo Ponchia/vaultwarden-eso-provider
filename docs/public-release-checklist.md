@@ -47,6 +47,9 @@ Required before calling a release generally usable:
   `target.template.data` with `mergePolicy: Merge`.
 - Publish the Helm chart to GHCR as an OCI chart and attach the packaged chart
   artifact to the GitHub Release.
+- Confirm the release workflow's post-upload evidence check passed for the
+  GitHub Release body, chart archive, chart Sigstore bundle, and digest /
+  checksum evidence.
 - Review the release image SBOM/provenance output.
 - Verify the image has a keyless Sigstore signature and GitHub artifact
   attestation.

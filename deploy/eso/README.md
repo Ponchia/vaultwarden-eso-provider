@@ -47,10 +47,20 @@ That bearer token is a read capability over every selector allowed by the
 provider policy, so restrict who can read it and who can create or edit
 `SecretStore` / `ExternalSecret` resources. The provider runtime credentials in
 `bweso-system` should not be reused across namespaces as the ESO auth Secret.
-Configure the Helm chart's
-`selectorPolicy.allowedKeys` or `selectorPolicy.allowedKeyPrefixes` whenever
-the provider credentials can see more vault items than the namespace should
-read.
+Prefer the Helm chart's ConfigMap-backed selector policy whenever the provider
+credentials can see more vault items than the namespace should read. Inline
+`selectorPolicy.allowedKeys` / `selectorPolicy.allowedKeyPrefixes` remain
+available for static policy that can wait for a provider rollout.
+For rendered GitOps output, run `scripts/eso-policy-coverage.rb` against the
+provider Deployment, selector-policy ConfigMap, and `ExternalSecret` resources
+before applying them. It fails if any selector is missing from policy and
+redacts selector values in findings by default. It accepts `-` for stdin and
+Kubernetes `List` output, so raw `kubectl get ... -o yaml` audits are valid
+inputs. Include `SecretStore` and `ClusterSecretStore` resources in live audits
+so the checker can ignore ExternalSecrets that use other providers. If the
+render contains multiple secret backends, scope the check with
+`--store <namespace>/<name>` or `--cluster-store <name>`. Empty selections fail
+unless you pass `--allow-empty` for an intentional policy-only lint.
 
 Selector policy matches only the raw ESO `remoteRef.key` or `dataFrom.extract.key`.
 It does not restrict individual properties on an allowed item. Treat each

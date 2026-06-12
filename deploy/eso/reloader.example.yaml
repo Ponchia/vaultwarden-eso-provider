@@ -48,7 +48,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: app
-          image: ghcr.io/example/app@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          image: gcr.io/example/app@sha256:0000000000000000000000000000000000000000000000000000000000000000
           imagePullPolicy: Always
           ports:
             - name: http

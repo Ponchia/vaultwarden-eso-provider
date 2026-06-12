@@ -16,9 +16,11 @@ The default chart shape is intentionally small:
   rendering when Prometheus Operator CRDs are installed.
 - Webhook bearer-token authentication enabled by default.
 - Provider-side selector policy with exact `remoteRef.key` allowlists and prefix
-  allowlists, either inline or sourced from a hot-reloadable ConfigMap
-  (`selectorPolicy.configMap`) so onboarding needs no provider restart. Running
-  without a selector policy requires `selectorPolicy.allowAllSelectors=true`.
+  allowlists. Production GitOps installs should source policy from a
+  hot-reloadable ConfigMap (`selectorPolicy.configMap`) so onboarding needs no
+  provider restart; inline lists are still available for static installs.
+  Running without a selector policy requires
+  `selectorPolicy.allowAllSelectors=true`.
 - Baseline resource requests/limits and seccomp by default.
 - Optional NetworkPolicy rendering. When enabled, default empty rules deny all
   traffic until you adapt ingress and egress rules to your ESO, DNS, Bitwarden

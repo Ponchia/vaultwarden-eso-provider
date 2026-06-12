@@ -125,6 +125,8 @@ jobs:
             --from-literal=client-secret='${{ steps.bootstrap.outputs.client_secret }}' \
             --from-literal=master-password="$VW_PASSWORD" \
             --from-literal=webhook-token='kind-webhook-token'
+          kubectl -n bweso-system create configmap bweso-selector-policy \
+            --from-literal=allowed-keys='id:${{ steps.bootstrap.outputs.item_id }}'
           helm install bweso deploy/helm/vaultwarden-eso-provider \
             -n bweso-system \
             --set-string image.repository=vaultwarden-eso-provider \
@@ -132,7 +134,7 @@ jobs:
             --set-string image.pullPolicy=Never \
             --set-string config.singleOriginUrl='http://vaultwarden.vaultwarden.svc.cluster.local' \
             --set-string credentials.existingSecret.name=bweso-credentials \
-            --set-string "selectorPolicy.allowedKeys[0]=id:${{ steps.bootstrap.outputs.item_id }}"
+            --set-string selectorPolicy.configMap.name=bweso-selector-policy
           kubectl -n bweso-system rollout status deployment/bweso-vaultwarden-eso-provider --timeout=120s
 
       - name: Apply ExternalSecret and verify

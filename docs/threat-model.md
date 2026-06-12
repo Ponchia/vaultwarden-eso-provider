@@ -80,9 +80,11 @@ webhook — are necessary, not optional.
 - Put only the webhook bearer token in workload namespaces. Keep client ID,
   client secret, and master password in the provider namespace or an equivalent
   runtime secret boundary.
-- Configure `selectorPolicy.allowedKeys` or `selectorPolicy.allowedKeyPrefixes`
-  on the provider Deployment when the credential can see more vault items than
-  the namespace should consume.
+- Configure provider-side selector policy when the credential can see more
+  vault items than the namespace should consume. Prefer a ConfigMap-backed
+  policy (`selectorPolicy.configMap`) with exact `id:` entries for GitOps-managed
+  installs; inline `selectorPolicy.allowedKeys` /
+  `selectorPolicy.allowedKeyPrefixes` are suitable only for static policy.
 - Treat the webhook bearer token as a read capability over every item selector
   allowed by provider policy. Restrict who can read the token Secret and who can
   create or edit `SecretStore` and `ExternalSecret` resources.
