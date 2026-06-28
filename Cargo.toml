@@ -48,7 +48,7 @@ subtle = { version = "2.6", default-features = false }
 thiserror = "2.0"
 tokio = { version = "1.40", features = ["macros", "rt-multi-thread", "signal", "net", "sync", "time"] }
 tower = { version = "0.5", features = ["util", "limit", "load-shed"] }
-tower-http = { version = "0.6", features = ["trace"] }
+tower-http = { version = "0.7", features = ["trace"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 url = "2.5"
