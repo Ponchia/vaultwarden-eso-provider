@@ -4,7 +4,7 @@ use std::str::FromStr;
 
 use aes::Aes256;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
-use cbc::cipher::{block_padding::Pkcs7, BlockDecryptMut, KeyIvInit};
+use cbc::cipher::{block_padding::Pkcs7, BlockModeDecrypt, KeyIvInit};
 use hmac::{Hmac, KeyInit, Mac};
 use sha2::Sha256;
 use thiserror::Error;
@@ -22,7 +22,7 @@ const HMAC_SHA256_LENGTH: usize = 32;
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct EncryptedString {
     encryption_type: EncryptionType,
-    iv: Vec<u8>,
+    iv: [u8; AES_CBC_IV_LENGTH],
     data: Vec<u8>,
     mac: Vec<u8>,
 }
@@ -64,11 +64,10 @@ impl EncryptedString {
         verify_mac(key.authentication_key(), &self.iv, &self.data, &self.mac)?;
 
         let mut data = Zeroizing::new(self.data.clone());
-        let decrypted =
-            Aes256CbcDecryptor::new(key.encryption_key().into(), self.iv.as_slice().into())
-                .decrypt_padded_mut::<Pkcs7>(&mut data)
-                .map_err(|_| CryptoError::DecryptFailed)?
-                .to_vec();
+        let decrypted = Aes256CbcDecryptor::new(key.encryption_key().into(), (&self.iv).into())
+            .decrypt_padded::<Pkcs7>(&mut data)
+            .map_err(|_| CryptoError::DecryptFailed)?
+            .to_vec();
 
         Ok(decrypted)
     }
@@ -116,6 +115,10 @@ impl FromStr for EncryptedString {
         if data.is_empty() || data.len() % AES_CBC_IV_LENGTH != 0 {
             return Err(CryptoError::InvalidCiphertextLength { actual: data.len() });
         }
+
+        let iv: [u8; AES_CBC_IV_LENGTH] = iv
+            .try_into()
+            .unwrap_or_else(|_| unreachable!("length checked above"));
 
         Ok(Self {
             encryption_type,
@@ -368,6 +371,19 @@ mod tests {
             unaligned,
             CryptoError::InvalidCiphertextLength { actual: 2 }
         ));
+    }
+
+    #[test]
+    fn rejects_wrong_length_iv() {
+        // 12-byte IV (AES-CBC requires exactly 16). Mac/data content is irrelevant — the IV
+        // length check runs before mac or ciphertext validation.
+        let Err(error) =
+            "2.AAECAwQFBgcICQoL|AAECAwQFBgcICQoLDA0ODw==|AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="
+                .parse::<EncryptedString>()
+        else {
+            unreachable!("12-byte IV should be rejected");
+        };
+        assert!(matches!(error, CryptoError::InvalidIvLength { actual: 12 }));
     }
 
     #[test]
