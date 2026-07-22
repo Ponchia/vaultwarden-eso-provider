@@ -82,6 +82,18 @@ struct Args {
     device_type: u8,
     #[arg(long, env = "BWESO_CACHE_TTL_SECONDS", default_value_t = 60)]
     cache_ttl_seconds: u64,
+    /// Additional seconds for serving a cached sync after a transient upstream
+    /// refresh failure. Disabled by default.
+    #[arg(long, env = "BWESO_CACHE_STALE_IF_ERROR_SECONDS", default_value_t = 0)]
+    cache_stale_if_error_seconds: u64,
+    /// Minimum seconds between upstream refresh attempts while stale data is
+    /// being served. Set to 0 to retry on every resolve request.
+    #[arg(
+        long,
+        env = "BWESO_CACHE_REFRESH_RETRY_INTERVAL_SECONDS",
+        default_value_t = 15
+    )]
+    cache_refresh_retry_interval_seconds: u64,
     #[arg(
         long = "allowed-key",
         env = "BWESO_ALLOWED_KEYS",
@@ -631,7 +643,11 @@ fn provider_from_args(args: &Args) -> anyhow::Result<Arc<dyn BitwardenProvider>>
         identifier: args.device_identifier.clone(),
         name: args.device_name.clone(),
     };
-    let cache_config = BitwardenCacheConfig::new(Duration::from_secs(args.cache_ttl_seconds));
+    let cache_config = BitwardenCacheConfig::new(Duration::from_secs(args.cache_ttl_seconds))
+        .with_stale_if_error(Duration::from_secs(args.cache_stale_if_error_seconds))
+        .with_refresh_retry_interval(Duration::from_secs(
+            args.cache_refresh_retry_interval_seconds,
+        ));
     let extra_root_certificates = load_extra_root_certificates(args.ca_bundle_file.as_deref())?;
     let http_config = BitwardenHttpConfig::new(
         Duration::from_secs(args.http_connect_timeout_seconds),
@@ -1153,6 +1169,7 @@ mod tests {
                 cache_hits: 2,
                 refresh_successes: 1,
                 refresh_failures: 0,
+                stale_serves: 3,
                 last_success_unix_seconds: Some(1_700_000_000),
                 last_success_age_seconds: Some(5),
             })
@@ -1220,6 +1237,8 @@ mod tests {
             device_name: "BWESO Test".to_string(),
             device_type: 22,
             cache_ttl_seconds: 60,
+            cache_stale_if_error_seconds: 0,
+            cache_refresh_retry_interval_seconds: 15,
             allowed_keys: Vec::new(),
             allowed_key_prefixes: Vec::new(),
             allowed_keys_file: None,
@@ -1241,6 +1260,22 @@ mod tests {
     fn security_related_size_limits_stay_at_documented_values() {
         assert_eq!(RESOLVE_BODY_LIMIT_BYTES, 16 * 1024);
         assert_eq!(MAX_POLICY_FILE_BYTES, 4 * 1024 * 1024);
+    }
+
+    #[test]
+    fn args_parse_stale_cache_settings() -> TestResult {
+        let args = Args::try_parse_from([
+            "vaultwarden-eso-provider",
+            "--cache-stale-if-error-seconds",
+            "600",
+            "--cache-refresh-retry-interval-seconds",
+            "20",
+        ])?;
+
+        assert_eq!(args.cache_ttl_seconds, 60);
+        assert_eq!(args.cache_stale_if_error_seconds, 600);
+        assert_eq!(args.cache_refresh_retry_interval_seconds, 20);
+        Ok(())
     }
 
     #[test]
@@ -2307,6 +2342,7 @@ frW69DSxg6/fcNRyvdTH+twvVnzH
             "bweso_resolve_requests_total{outcome=\"success\",error_kind=\"none\",status=\"200\"} 1"
         ));
         assert!(body.contains("bweso_cache_hits_total 2"));
+        assert!(body.contains("bweso_cache_stale_serves_total 3"));
         assert!(body.contains("bweso_cache_refreshes_total{outcome=\"success\"} 1"));
         assert!(body.contains("bweso_cache_last_success_timestamp_seconds 1700000000"));
         assert!(body.contains("bweso_cache_last_success_age_seconds 5"));

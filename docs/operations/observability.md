@@ -51,6 +51,7 @@ Current series:
 | `bweso_resolve_requests_total` | counter | `outcome`, `error_kind`, `status` | Secret resolution count. |
 | `bweso_resolve_duration_seconds` | histogram | `outcome`, `error_kind`, `status` | End-to-end resolution latency. |
 | `bweso_cache_hits_total` | counter | none | Resolve requests served from a fresh sync cache. |
+| `bweso_cache_stale_serves_total` | counter | none | Resolve requests served from a bounded stale cache after a transient upstream refresh failure. |
 | `bweso_cache_refreshes_total` | counter | `outcome` | Full vault sync cache refresh attempts. |
 | `bweso_cache_last_success_timestamp_seconds` | gauge | none | Unix timestamp of the last successful sync cache refresh. Present after the first successful refresh. |
 | `bweso_cache_last_success_age_seconds` | gauge | none | Age of the last successful sync cache refresh. Present after the first successful refresh. |
@@ -114,6 +115,10 @@ sum(rate(bweso_resolve_requests_total{outcome="error"}[5m])) > 0
 
 ```promql
 time() - bweso_cache_last_success_timestamp_seconds > 600
+```
+
+```promql
+increase(bweso_cache_stale_serves_total[5m]) > 0
 ```
 
 ```promql

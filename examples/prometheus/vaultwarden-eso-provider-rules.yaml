@@ -33,6 +33,14 @@ spec:
           annotations:
             summary: Vaultwarden ESO Provider cache refresh is failing
             description: Full vault sync refresh attempts are failing. Check Bitwarden/Vaultwarden reachability and credentials.
+        - alert: VaultwardenEsoServingStaleCache
+          expr: increase(bweso_cache_stale_serves_total[5m]) > 0
+          for: 1m
+          labels:
+            severity: warning
+          annotations:
+            summary: Vaultwarden ESO Provider is serving stale cache data
+            description: The opt-in stale-cache fallback is active after a transient upstream refresh failure. Check upstream reachability and the last successful cache refresh age.
         - alert: VaultwardenEsoCacheStale
           expr: bweso_cache_last_success_age_seconds > 600
           for: 10m

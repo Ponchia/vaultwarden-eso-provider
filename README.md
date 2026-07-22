@@ -142,6 +142,9 @@ See [Architecture](docs/architecture.md) for the design and trade-offs.
 - Public errors, logs, and metrics redact secret values, vault item IDs, item
   names, requested properties, API tokens, master passwords, and derived keys.
 - Non-local Vaultwarden/Bitwarden endpoints require TLS verification.
+- Upstream refresh failures fail closed by default. Unreleased `main` lets
+  operators opt in to a bounded stale-cache window for transient outages; see the
+  [install guide](docs/install/eso-webhook.md#configure-bounded-stale-cache).
 - The chart exposes a cluster-internal HTTP Service by default; add a mesh,
   ingress, or gateway when the pod network is not a trusted boundary.
 - Selector policy is item-key scoped, not property scoped. If a namespace can
