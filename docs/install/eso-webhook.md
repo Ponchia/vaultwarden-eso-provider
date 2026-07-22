@@ -119,6 +119,39 @@ credential per namespace or trust boundary for strict isolation.
 See [`../selectors-and-policy.md`](../selectors-and-policy.md) for selector
 syntax, property names, policy scope, and ConfigMap-backed hot reload behavior.
 
+## Configure bounded stale cache
+
+This configuration is available on unreleased `main`; the `v0.4.0` release
+continues to fail closed on every upstream refresh error.
+
+The provider fails closed on upstream refresh errors by default. You can opt in
+to serving a previous successful sync during a temporary Vaultwarden or
+Bitwarden outage:
+
+```yaml
+config:
+  cacheTtlSeconds: 60
+  cacheStaleIfErrorSeconds: 600
+  cacheRefreshRetryIntervalSeconds: 15
+```
+
+With these values, a cached sync is fresh for 60 seconds and may then be served
+for up to 600 additional seconds when a refresh fails. The maximum cache age is
+the sum: 660 seconds. The provider retries the upstream refresh after 15
+seconds instead of retrying once per ESO request.
+
+Stale fallback applies only after at least one successful sync and only for
+transport failures, HTTP `408`, HTTP `429`, and HTTP `5xx` responses. It does
+not mask authentication or authorization failures, malformed or oversized
+responses, invalid KDF data, or decryption failures. The cache is in memory and
+is empty after a provider restart.
+
+Set `cacheStaleIfErrorSeconds: 0` to keep the default fail-closed behavior. If
+you enable this mode, alert on `bweso_cache_stale_serves_total` and choose a
+window that matches how long your workloads may safely keep the previous vault
+value. A longer window improves outage tolerance but can delay propagation of a
+vault update while the upstream service is unavailable.
+
 ## Recommended Production Pattern
 
 For each namespace or trust boundary:

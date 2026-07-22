@@ -10,7 +10,9 @@ before release so generated notes land in the right category.
 
 ## Unreleased
 
-- Nothing yet.
+- Added opt-in bounded stale-cache fallback for transient upstream failures,
+  with refresh retry throttling and a dedicated Prometheus counter. The default
+  remains fail closed.
 
 ## v0.4.0 - 2026-07-22
 

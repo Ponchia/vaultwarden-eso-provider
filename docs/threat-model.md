@@ -71,6 +71,9 @@ webhook — are necessary, not optional.
   return redacted `403` responses for disallowed `remoteRef.key` values.
 - The provider must authenticate `/v1/resolve` before parsing the JSON body and
   must keep request body size bounded.
+- Upstream failures must fail closed by default. An operator-enabled stale
+  fallback must be time-bounded, require a previous successful sync, apply only
+  to transient upstream failures, and remain observable without vault metadata.
 
 ## Recommended Isolation Model
 
@@ -115,6 +118,10 @@ webhook — are necessary, not optional.
 - Successful Bitwarden-compatible JSON responses are capped at 32 MiB before
   deserialization. The HTTP client also enforces connect and whole-request
   timeouts.
+- Bounded stale-cache fallback is disabled by default. When enabled, it can
+  delay propagation of a changed vault value during a transient upstream
+  outage, but it never masks authentication, payload-validation, KDF, or
+  decryption failures.
 
 ## Open Questions
 

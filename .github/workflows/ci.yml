@@ -85,6 +85,9 @@ jobs:
       - name: Validate selector-policy Helm contracts
         run: bash scripts/helm-policy-contracts.sh
 
+      - name: Validate cache Helm contracts
+        run: bash scripts/helm-cache-contracts.sh
+
       - name: Validate ESO selector-policy coverage contracts
         run: bash scripts/eso-policy-coverage-contracts.sh
 

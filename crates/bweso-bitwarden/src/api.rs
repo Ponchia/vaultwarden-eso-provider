@@ -25,6 +25,7 @@ use crate::{
 const BITWARDEN_CLIENT_VERSION: &str = "2025.12.0";
 const DEFAULT_DEVICE_TYPE_SERVER: u8 = 22;
 const DEFAULT_CACHE_TTL: Duration = Duration::from_secs(60);
+const DEFAULT_CACHE_REFRESH_RETRY_INTERVAL: Duration = Duration::from_secs(15);
 const DEFAULT_HTTP_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 const DEFAULT_HTTP_REQUEST_TIMEOUT: Duration = Duration::from_secs(25);
 const TOKEN_EXPIRY_REFRESH_SKEW: Duration = Duration::from_secs(30);
@@ -215,14 +216,12 @@ impl BitwardenApiClient {
     }
 
     async fn ensure_fresh_cached_sync(&self) -> Result<(), BitwardenClientError> {
-        if self.has_fresh_cache().await {
-            self.metrics.cache_hits.fetch_add(1, Ordering::Relaxed);
+        if self.reuse_cached_sync_if_available().await {
             return Ok(());
         }
 
         let _guard = self.refresh_lock.lock().await;
-        if self.has_fresh_cache().await {
-            self.metrics.cache_hits.fetch_add(1, Ordering::Relaxed);
+        if self.reuse_cached_sync_if_available().await {
             return Ok(());
         }
 
@@ -238,6 +237,9 @@ impl BitwardenApiClient {
                 self.metrics
                     .refresh_failures
                     .fetch_add(1, Ordering::Relaxed);
+                if self.serve_stale_after_error(&error).await {
+                    return Ok(());
+                }
                 return Err(error);
             }
         };
@@ -246,12 +248,45 @@ impl BitwardenApiClient {
         Ok(())
     }
 
-    async fn has_fresh_cache(&self) -> bool {
-        self.cache
-            .read()
-            .await
-            .as_ref()
-            .is_some_and(|cached| cached.is_fresh(self.cache_config.ttl))
+    async fn reuse_cached_sync_if_available(&self) -> bool {
+        let cache = self.cache.read().await;
+        let Some(cached) = cache.as_ref() else {
+            return false;
+        };
+        let now = Instant::now();
+
+        if cached.is_fresh_at(self.cache_config.ttl, now) {
+            self.metrics.cache_hits.fetch_add(1, Ordering::Relaxed);
+            return true;
+        }
+        if cached.can_defer_refresh_at(self.cache_config, now) {
+            self.metrics.stale_serves.fetch_add(1, Ordering::Relaxed);
+            return true;
+        }
+
+        false
+    }
+
+    async fn serve_stale_after_error(&self, error: &BitwardenClientError) -> bool {
+        if !error.permits_stale_cache() {
+            return false;
+        }
+
+        let now = Instant::now();
+        let mut cache = self.cache.write().await;
+        let Some(cached) = cache.as_mut() else {
+            return false;
+        };
+        if !cached.is_within_stale_if_error_at(self.cache_config, now) {
+            return false;
+        }
+
+        cached.defer_refresh_until(
+            now.checked_add(self.cache_config.refresh_retry_interval)
+                .unwrap_or(now),
+        );
+        self.metrics.stale_serves.fetch_add(1, Ordering::Relaxed);
+        true
     }
 
     async fn fetch_vault(&self) -> Result<CachedVault, BitwardenClientError> {
@@ -436,32 +471,53 @@ impl BitwardenApiClientOptions {
 /// In-memory cache settings for the API provider.
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct BitwardenCacheConfig {
-    /// Maximum age for the cached unlocked user key plus encrypted sync
-    /// response. A zero duration disables reuse across requests.
+    /// Maximum age for fresh reuse of the cached unlocked user key plus
+    /// encrypted sync response. A zero duration disables fresh reuse.
     pub ttl: Duration,
+    /// Maximum additional age beyond [`Self::ttl`] for serving a cached sync
+    /// after a transient upstream refresh failure. A zero duration keeps
+    /// fail-closed behavior.
+    pub stale_if_error: Duration,
+    /// Minimum delay before retrying an upstream refresh after serving stale
+    /// data for a transient failure. A zero duration retries on every resolve.
+    pub refresh_retry_interval: Duration,
 }
 
 impl BitwardenCacheConfig {
     /// Build cache settings with an explicit TTL.
     #[must_use]
     pub const fn new(ttl: Duration) -> Self {
-        Self { ttl }
+        Self {
+            ttl,
+            stale_if_error: Duration::ZERO,
+            refresh_retry_interval: DEFAULT_CACHE_REFRESH_RETRY_INTERVAL,
+        }
     }
 
-    /// Disable cache reuse across requests.
+    /// Permit bounded stale reads after transient upstream refresh failures.
+    #[must_use]
+    pub const fn with_stale_if_error(mut self, stale_if_error: Duration) -> Self {
+        self.stale_if_error = stale_if_error;
+        self
+    }
+
+    /// Override the delay between refresh attempts while stale data is served.
+    #[must_use]
+    pub const fn with_refresh_retry_interval(mut self, refresh_retry_interval: Duration) -> Self {
+        self.refresh_retry_interval = refresh_retry_interval;
+        self
+    }
+
+    /// Disable both fresh and stale cache reuse across requests.
     #[must_use]
     pub const fn disabled() -> Self {
-        Self {
-            ttl: Duration::ZERO,
-        }
+        Self::new(Duration::ZERO)
     }
 }
 
 impl Default for BitwardenCacheConfig {
     fn default() -> Self {
-        Self {
-            ttl: DEFAULT_CACHE_TTL,
-        }
+        Self::new(DEFAULT_CACHE_TTL)
     }
 }
 
@@ -514,6 +570,9 @@ pub struct BitwardenCacheMetrics {
     pub refresh_successes: u64,
     /// Number of failed full vault refresh attempts.
     pub refresh_failures: u64,
+    /// Number of resolve requests served stale after a transient refresh
+    /// failure.
+    pub stale_serves: u64,
     /// Unix timestamp of the latest successful refresh.
     pub last_success_unix_seconds: Option<u64>,
     /// Age in seconds of the latest successful refresh at snapshot time.
@@ -525,6 +584,7 @@ struct CacheMetricState {
     cache_hits: AtomicU64,
     refresh_successes: AtomicU64,
     refresh_failures: AtomicU64,
+    stale_serves: AtomicU64,
     last_success_unix_seconds: AtomicU64,
 }
 
@@ -544,6 +604,7 @@ impl CacheMetricState {
             cache_hits: self.cache_hits.load(Ordering::Relaxed),
             refresh_successes: self.refresh_successes.load(Ordering::Relaxed),
             refresh_failures: self.refresh_failures.load(Ordering::Relaxed),
+            stale_serves: self.stale_serves.load(Ordering::Relaxed),
             last_success_unix_seconds,
             last_success_age_seconds,
         }
@@ -561,6 +622,7 @@ struct CachedVault {
     sync: SyncResponse,
     fetched_at: Instant,
     expires_at: Option<Instant>,
+    refresh_retry_after: Option<Instant>,
 }
 
 impl CachedVault {
@@ -574,11 +636,8 @@ impl CachedVault {
             sync,
             fetched_at,
             expires_at,
+            refresh_retry_after: None,
         }
-    }
-
-    fn is_fresh(&self, ttl: Duration) -> bool {
-        self.is_fresh_at(ttl, Instant::now())
     }
 
     fn is_fresh_at(&self, ttl: Duration, now: Instant) -> bool {
@@ -592,6 +651,23 @@ impl CachedVault {
                 .is_some_and(|refresh_deadline| now < refresh_deadline),
             None => true,
         }
+    }
+
+    fn is_within_stale_if_error_at(&self, config: BitwardenCacheConfig, now: Instant) -> bool {
+        !config.stale_if_error.is_zero()
+            && now.duration_since(self.fetched_at)
+                < config.ttl.saturating_add(config.stale_if_error)
+    }
+
+    fn can_defer_refresh_at(&self, config: BitwardenCacheConfig, now: Instant) -> bool {
+        self.is_within_stale_if_error_at(config, now)
+            && self
+                .refresh_retry_after
+                .is_some_and(|refresh_retry_after| now < refresh_retry_after)
+    }
+
+    fn defer_refresh_until(&mut self, refresh_retry_after: Instant) {
+        self.refresh_retry_after = Some(refresh_retry_after);
     }
 }
 
@@ -913,12 +989,30 @@ pub enum BitwardenApiError {
     UnsupportedSharedItem,
 }
 
+impl BitwardenApiError {
+    fn permits_stale_cache(&self) -> bool {
+        match self {
+            Self::Http(_) => true,
+            Self::HttpStatus { status, .. } => {
+                matches!(*status, 408 | 429) || (500..=599).contains(status)
+            }
+            _ => false,
+        }
+    }
+}
+
+impl BitwardenClientError {
+    fn permits_stale_cache(&self) -> bool {
+        matches!(self, Self::Api(error) if error.permits_stale_cache())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::{
         net::SocketAddr,
         sync::{
-            atomic::{AtomicUsize, Ordering},
+            atomic::{AtomicU16, AtomicUsize, Ordering},
             Arc,
         },
         time::Duration,
@@ -997,6 +1091,7 @@ frW69DSxg6/fcNRyvdTH+twvVnzH
     struct FakeCounters {
         token_requests: Arc<AtomicUsize>,
         sync_requests: Arc<AtomicUsize>,
+        token_status: Arc<AtomicU16>,
     }
 
     impl FakeCounters {
@@ -1006,6 +1101,10 @@ frW69DSxg6/fcNRyvdTH+twvVnzH
 
         fn sync_requests(&self) -> usize {
             self.sync_requests.load(Ordering::SeqCst)
+        }
+
+        fn set_token_status(&self, status: StatusCode) {
+            self.token_status.store(status.as_u16(), Ordering::SeqCst);
         }
     }
 
@@ -1088,6 +1187,18 @@ frW69DSxg6/fcNRyvdTH+twvVnzH
         assert_eq!(config.connect_timeout, Duration::from_secs(1));
         assert_eq!(config.request_timeout, Duration::from_secs(2));
         Ok(())
+    }
+
+    #[test]
+    fn cache_config_defaults_to_fail_closed() {
+        let config = BitwardenCacheConfig::default();
+
+        assert_eq!(config.ttl, Duration::from_secs(60));
+        assert_eq!(config.stale_if_error, Duration::ZERO);
+        assert_eq!(
+            config.refresh_retry_interval,
+            DEFAULT_CACHE_REFRESH_RETRY_INTERVAL
+        );
     }
 
     #[tokio::test]
@@ -1361,7 +1472,7 @@ frW69DSxg6/fcNRyvdTH+twvVnzH
         let sync = SyncResponse { ciphers: vec![] };
 
         let fresh = CachedVault::new(fake_session(Some(3600))?, sync, now);
-        assert!(fresh.is_fresh(Duration::from_secs(60)));
+        assert!(fresh.is_fresh_at(Duration::from_secs(60), now));
 
         let Some(stale_fetched_at) = now.checked_sub(Duration::from_secs(61)) else {
             unreachable!("test instant should support a short subtraction");
@@ -1371,14 +1482,14 @@ frW69DSxg6/fcNRyvdTH+twvVnzH
             SyncResponse { ciphers: vec![] },
             stale_fetched_at,
         );
-        assert!(!expired_ttl.is_fresh(Duration::from_secs(60)));
+        assert!(!expired_ttl.is_fresh_at(Duration::from_secs(60), now));
 
         let expiring_token = CachedVault::new(
             fake_session(Some(20))?,
             SyncResponse { ciphers: vec![] },
             now,
         );
-        assert!(!expiring_token.is_fresh(Duration::from_secs(60)));
+        assert!(!expiring_token.is_fresh_at(Duration::from_secs(60), now));
         Ok(())
     }
 
@@ -1393,6 +1504,51 @@ frW69DSxg6/fcNRyvdTH+twvVnzH
 
         assert!(!vault.is_fresh_at(Duration::from_secs(60), now));
         Ok(())
+    }
+
+    #[test]
+    fn cached_vault_stale_window_is_bounded_beyond_ttl() -> TestResult {
+        let now = Instant::now();
+        let config = BitwardenCacheConfig::new(Duration::from_secs(60))
+            .with_stale_if_error(Duration::from_secs(120));
+        let vault = CachedVault::new(
+            fake_session(Some(3600))?,
+            SyncResponse { ciphers: vec![] },
+            now,
+        );
+
+        let within_window = now
+            .checked_add(Duration::from_secs(179))
+            .ok_or("test instant should support a short addition")?;
+        let outside_window = now
+            .checked_add(Duration::from_secs(180))
+            .ok_or("test instant should support a short addition")?;
+
+        assert!(vault.is_within_stale_if_error_at(config, within_window));
+        assert!(!vault.is_within_stale_if_error_at(config, outside_window));
+        assert!(!vault.is_within_stale_if_error_at(
+            BitwardenCacheConfig::new(Duration::from_secs(60)),
+            within_window
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn stale_cache_only_accepts_transient_upstream_statuses() {
+        for status in [408, 429, 500, 503, 599] {
+            assert!(BitwardenApiError::HttpStatus {
+                endpoint: "test",
+                status,
+            }
+            .permits_stale_cache());
+        }
+        for status in [400, 401, 403, 404, 409] {
+            assert!(!BitwardenApiError::HttpStatus {
+                endpoint: "test",
+                status,
+            }
+            .permits_stale_cache());
+        }
     }
 
     #[tokio::test]
@@ -1429,6 +1585,7 @@ frW69DSxg6/fcNRyvdTH+twvVnzH
         assert_eq!(initial.cache_hits, 0);
         assert_eq!(initial.refresh_successes, 0);
         assert_eq!(initial.refresh_failures, 0);
+        assert_eq!(initial.stale_serves, 0);
         assert_eq!(initial.last_success_unix_seconds, None);
         assert_eq!(initial.last_success_age_seconds, None);
 
@@ -1443,6 +1600,7 @@ frW69DSxg6/fcNRyvdTH+twvVnzH
         assert_eq!(after_refresh.cache_hits, 0);
         assert_eq!(after_refresh.refresh_successes, 1);
         assert_eq!(after_refresh.refresh_failures, 0);
+        assert_eq!(after_refresh.stale_serves, 0);
         assert!(after_refresh.last_success_age_seconds.is_some());
 
         client.resolve(selector).await?;
@@ -1452,6 +1610,7 @@ frW69DSxg6/fcNRyvdTH+twvVnzH
         assert_eq!(after_hit.cache_hits, 1);
         assert_eq!(after_hit.refresh_successes, 1);
         assert_eq!(after_hit.refresh_failures, 0);
+        assert_eq!(after_hit.stale_serves, 0);
         assert_eq!(after_hit.last_success_unix_seconds, Some(refresh_timestamp));
         assert!(after_hit.last_success_age_seconds.is_some());
         assert_eq!(counters.token_requests(), 1);
@@ -1492,6 +1651,157 @@ frW69DSxg6/fcNRyvdTH+twvVnzH
 
         assert_eq!(counters.token_requests(), 2);
         assert_eq!(counters.sync_requests(), 2);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn serves_bounded_stale_cache_and_throttles_refresh_retries() -> TestResult {
+        let cache_config = BitwardenCacheConfig::new(Duration::from_millis(10))
+            .with_stale_if_error(Duration::from_secs(1))
+            .with_refresh_retry_interval(Duration::from_millis(100));
+        let (client, counters) = fake_client_with_cache(cache_config).await?;
+        let selector = BitwardenSelector::try_from(RemoteRef {
+            key: "name:app/database".to_string(),
+            property: Some("DATABASE_URL".to_string()),
+            version: None,
+        })?;
+
+        client.resolve(selector.clone()).await?;
+        counters.set_token_status(StatusCode::SERVICE_UNAVAILABLE);
+        tokio::time::sleep(Duration::from_millis(20)).await;
+
+        client.resolve(selector.clone()).await?;
+        client.resolve(selector).await?;
+
+        let metrics = client
+            .cache_metrics()
+            .ok_or("Bitwarden API client should expose cache metrics")?;
+        assert_eq!(metrics.cache_hits, 0);
+        assert_eq!(metrics.refresh_successes, 1);
+        assert_eq!(metrics.refresh_failures, 1);
+        assert_eq!(metrics.stale_serves, 2);
+        assert_eq!(counters.token_requests(), 2);
+        assert_eq!(counters.sync_requests(), 1);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn retries_refresh_after_stale_retry_interval() -> TestResult {
+        let cache_config = BitwardenCacheConfig::new(Duration::from_millis(10))
+            .with_stale_if_error(Duration::from_secs(1))
+            .with_refresh_retry_interval(Duration::from_millis(20));
+        let (client, counters) = fake_client_with_cache(cache_config).await?;
+        let selector = BitwardenSelector::try_from(RemoteRef {
+            key: "name:app/database".to_string(),
+            property: Some("DATABASE_URL".to_string()),
+            version: None,
+        })?;
+
+        client.resolve(selector.clone()).await?;
+        counters.set_token_status(StatusCode::SERVICE_UNAVAILABLE);
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        client.resolve(selector.clone()).await?;
+
+        counters.set_token_status(StatusCode::OK);
+        tokio::time::sleep(Duration::from_millis(30)).await;
+        client.resolve(selector).await?;
+
+        let metrics = client
+            .cache_metrics()
+            .ok_or("Bitwarden API client should expose cache metrics")?;
+        assert_eq!(metrics.refresh_successes, 2);
+        assert_eq!(metrics.refresh_failures, 1);
+        assert_eq!(metrics.stale_serves, 1);
+        assert_eq!(counters.token_requests(), 3);
+        assert_eq!(counters.sync_requests(), 2);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn stale_cache_fails_closed_for_authentication_errors() -> TestResult {
+        let cache_config = BitwardenCacheConfig::new(Duration::from_millis(10))
+            .with_stale_if_error(Duration::from_secs(1));
+        let (client, counters) = fake_client_with_cache(cache_config).await?;
+        let selector = BitwardenSelector::try_from(RemoteRef {
+            key: "name:app/database".to_string(),
+            property: Some("DATABASE_URL".to_string()),
+            version: None,
+        })?;
+
+        client.resolve(selector.clone()).await?;
+        counters.set_token_status(StatusCode::UNAUTHORIZED);
+        tokio::time::sleep(Duration::from_millis(20)).await;
+
+        let Err(error) = client.resolve(selector).await else {
+            unreachable!("authentication errors must not use stale cache");
+        };
+        assert!(matches!(
+            error,
+            BitwardenClientError::Api(BitwardenApiError::HttpStatus { status: 401, .. })
+        ));
+        let metrics = client
+            .cache_metrics()
+            .ok_or("Bitwarden API client should expose cache metrics")?;
+        assert_eq!(metrics.refresh_failures, 1);
+        assert_eq!(metrics.stale_serves, 0);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn stale_cache_fails_closed_after_its_age_limit() -> TestResult {
+        let cache_config = BitwardenCacheConfig::new(Duration::from_millis(5))
+            .with_stale_if_error(Duration::from_millis(10));
+        let (client, counters) = fake_client_with_cache(cache_config).await?;
+        let selector = BitwardenSelector::try_from(RemoteRef {
+            key: "name:app/database".to_string(),
+            property: Some("DATABASE_URL".to_string()),
+            version: None,
+        })?;
+
+        client.resolve(selector.clone()).await?;
+        counters.set_token_status(StatusCode::SERVICE_UNAVAILABLE);
+        tokio::time::sleep(Duration::from_millis(30)).await;
+
+        let Err(error) = client.resolve(selector).await else {
+            unreachable!("expired stale cache must not be served");
+        };
+        assert!(matches!(
+            error,
+            BitwardenClientError::Api(BitwardenApiError::HttpStatus { status: 503, .. })
+        ));
+        let metrics = client
+            .cache_metrics()
+            .ok_or("Bitwarden API client should expose cache metrics")?;
+        assert_eq!(metrics.refresh_failures, 1);
+        assert_eq!(metrics.stale_serves, 0);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn stale_cache_requires_a_previous_successful_refresh() -> TestResult {
+        let cache_config = BitwardenCacheConfig::new(Duration::from_secs(60))
+            .with_stale_if_error(Duration::from_secs(300));
+        let (client, counters) = fake_client_with_cache(cache_config).await?;
+        let selector = BitwardenSelector::try_from(RemoteRef {
+            key: "name:app/database".to_string(),
+            property: Some("DATABASE_URL".to_string()),
+            version: None,
+        })?;
+        counters.set_token_status(StatusCode::SERVICE_UNAVAILABLE);
+
+        let Err(error) = client.resolve(selector).await else {
+            unreachable!("an empty cache cannot satisfy a failed refresh");
+        };
+        assert!(matches!(
+            error,
+            BitwardenClientError::Api(BitwardenApiError::HttpStatus { status: 503, .. })
+        ));
+        let metrics = client
+            .cache_metrics()
+            .ok_or("Bitwarden API client should expose cache metrics")?;
+        assert_eq!(metrics.refresh_successes, 0);
+        assert_eq!(metrics.refresh_failures, 1);
+        assert_eq!(metrics.stale_serves, 0);
         Ok(())
     }
 
@@ -1659,6 +1969,15 @@ frW69DSxg6/fcNRyvdTH+twvVnzH
         Form(form): Form<FakeTokenForm>,
     ) -> impl IntoResponse {
         state.counters.token_requests.fetch_add(1, Ordering::SeqCst);
+
+        let forced_status = state.counters.token_status.load(Ordering::SeqCst);
+        if forced_status != 0 {
+            let status =
+                StatusCode::from_u16(forced_status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+            if !status.is_success() {
+                return (status, Json(json!({ "error": "forced test failure" }))).into_response();
+            }
+        }
 
         let valid = form.grant_type == "client_credentials"
             && form.scope == "api"
