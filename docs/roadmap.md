@@ -1,7 +1,20 @@
 # Roadmap
 
-This roadmap separates what shipped in the `v0.1.x` release line from
-follow-up work.
+This roadmap records shipped release lines and remaining follow-up work.
+
+## v0.4.0
+
+Released after `v0.3.0`:
+
+- **Bounded upstream responses**: successful sync payloads are capped at 32 MiB,
+  and authenticated response bodies have their own read deadline.
+- **Unambiguous whole-item documents**: duplicate keys across login fields,
+  notes, TOTP, SSH fields, and custom fields fail closed instead of silently
+  overwriting one another.
+- **Concurrent fresh-cache reads**: cached decrypts use a read lock while cache
+  refreshes remain serialized.
+- **Actionable error metrics**: missing items and missing properties have
+  distinct error kinds, with dedicated timeout and oversized-payload outcomes.
 
 ## v0.3.0
 

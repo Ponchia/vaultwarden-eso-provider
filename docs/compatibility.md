@@ -74,15 +74,20 @@ worked end-to-end on this date," not as production soak time:
   account and the exact `v0.1.1` release chart and image on a real k3s
   cluster on 2026-05-11, including selector policy, single-field and
   whole-item sync, target Secret recreation, webhook restart, negative cases,
-  and redacted metrics. The current `v0.3.0` release keeps the same
+  and redacted metrics. The current `v0.4.0` release keeps the same
   split-endpoint provider protocol implementation covered by fake-server tests.
+- Vaultwarden single-origin: the exact `v0.4.0` OCI chart and image were
+  deployed to the maintainer's production k3s cluster on 2026-07-22. All 63
+  ExternalSecrets reconciled successfully, including a forced cold-cache
+  refresh after enabling the provider's default-deny NetworkPolicy. Provider
+  cache-refresh failures remained at zero.
 
 The latest Vaultwarden live verification environment used:
 
 - k3s server `v1.34.5+k3s1`.
 - External Secrets Operator `v2.4.1`.
 - Helm `v4.1.4`.
-- Vaultwarden `1.35.4`.
+- Vaultwarden `1.36.0`.
 
 ## Current Scope
 

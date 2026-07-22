@@ -1,7 +1,7 @@
 # Release Readiness Plan
 
 This file records the release-readiness decisions for Vaultwarden ESO Provider.
-`v0.3.0` is public, so this document separates the current published baseline
+`v0.4.0` is public, so this document separates the current published baseline
 from the rules and automation for future releases.
 
 ## Product Shape
