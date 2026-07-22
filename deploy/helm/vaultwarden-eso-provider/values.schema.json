@@ -113,6 +113,16 @@
           "pattern": "^[0-9]+$",
           "minimum": 0
         },
+        "cacheStaleIfErrorSeconds": {
+          "type": ["integer", "string"],
+          "pattern": "^[0-9]+$",
+          "minimum": 0
+        },
+        "cacheRefreshRetryIntervalSeconds": {
+          "type": ["integer", "string"],
+          "pattern": "^[0-9]+$",
+          "minimum": 0
+        },
         "httpConnectTimeoutSeconds": {
           "type": ["integer", "string"],
           "pattern": "^[1-9][0-9]*$",

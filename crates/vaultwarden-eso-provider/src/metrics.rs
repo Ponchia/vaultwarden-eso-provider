@@ -370,6 +370,21 @@ fn render_cache_metrics(output: &mut String, metrics: BitwardenCacheMetrics) {
     append_line(
         output,
         format_args!(
+            "# HELP bweso_cache_stale_serves_total Resolve requests served from a bounded stale cache after a transient upstream refresh failure."
+        ),
+    );
+    append_line(
+        output,
+        format_args!("# TYPE bweso_cache_stale_serves_total counter"),
+    );
+    append_line(
+        output,
+        format_args!("bweso_cache_stale_serves_total {}", metrics.stale_serves),
+    );
+
+    append_line(
+        output,
+        format_args!(
             "# HELP bweso_cache_refreshes_total Bitwarden sync cache refresh attempts by outcome."
         ),
     );

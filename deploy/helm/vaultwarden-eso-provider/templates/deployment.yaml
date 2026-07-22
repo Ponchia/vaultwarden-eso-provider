@@ -83,6 +83,10 @@ spec:
             {{- end }}
             - name: BWESO_CACHE_TTL_SECONDS
               value: {{ .Values.config.cacheTtlSeconds | quote }}
+            - name: BWESO_CACHE_STALE_IF_ERROR_SECONDS
+              value: {{ .Values.config.cacheStaleIfErrorSeconds | quote }}
+            - name: BWESO_CACHE_REFRESH_RETRY_INTERVAL_SECONDS
+              value: {{ .Values.config.cacheRefreshRetryIntervalSeconds | quote }}
             - name: BWESO_HTTP_CONNECT_TIMEOUT_SECONDS
               value: {{ .Values.config.httpConnectTimeoutSeconds | quote }}
             - name: BWESO_HTTP_REQUEST_TIMEOUT_SECONDS

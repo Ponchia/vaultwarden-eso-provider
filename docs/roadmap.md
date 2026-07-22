@@ -2,6 +2,13 @@
 
 This roadmap records shipped release lines and remaining follow-up work.
 
+## Unreleased
+
+- **Bounded stale cache**: operators can opt in to serving a previous successful
+  sync for a fixed window after transient upstream failures. Retry throttling
+  prevents an ESO request burst from becoming an upstream login burst, and a
+  dedicated metric exposes every stale resolve.
+
 ## v0.4.0
 
 Released after `v0.3.0`:
@@ -124,8 +131,6 @@ Higher-effort follow-up work:
   mapping only after the UX and security model are clear.
 - Assess whether a native ESO provider would remove webhook operational
   friction without duplicating ESO's lifecycle semantics.
-- Evaluate stale-cache-on-upstream-outage behavior. The first release keeps
-  upstream failures explicit.
 - Decide whether a GitHub Pages chart repository is worth the extra release
   surface for users who cannot consume OCI charts.
 - Revisit a native Kubernetes controller only if ESO cannot cover important

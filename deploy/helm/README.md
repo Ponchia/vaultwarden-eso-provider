@@ -21,6 +21,9 @@ The default chart shape is intentionally small:
   provider restart; inline lists are still available for static installs.
   Running without a selector policy requires
   `selectorPolicy.allowAllSelectors=true`.
+- Fail-closed cache refreshes by default, with optional bounded stale reads and
+  refresh retry throttling through `config.cacheStaleIfErrorSeconds` and
+  `config.cacheRefreshRetryIntervalSeconds`.
 - Baseline resource requests/limits and seccomp by default.
 - Optional NetworkPolicy rendering. When enabled, default empty rules deny all
   traffic until you adapt ingress and egress rules to your ESO, DNS, Bitwarden
