@@ -104,6 +104,13 @@ Validate endpoint and credential configuration.
 {{- if and .Values.auth.enabled .Values.auth.insecureAllowUnauthenticated -}}
 {{- fail "configure either auth.enabled=true or auth.insecureAllowUnauthenticated=true, not both" -}}
 {{- end -}}
+{{- $hasScopedAuthPolicy := .Values.auth.scopedPolicy.existingSecret.name -}}
+{{- if and $hasScopedAuthPolicy (not .Values.auth.enabled) -}}
+{{- fail "auth.scopedPolicy requires auth.enabled=true" -}}
+{{- end -}}
+{{- if and $hasScopedAuthPolicy (not .Values.auth.scopedPolicy.existingSecret.key) -}}
+{{- fail "auth.scopedPolicy.existingSecret.key is required when scoped authentication is configured" -}}
+{{- end -}}
 {{- $hasSelectorAllowList := or .Values.selectorPolicy.allowedKeys .Values.selectorPolicy.allowedKeyPrefixes .Values.selectorPolicy.configMap.name -}}
 {{- if and (not .Values.selectorPolicy.allowAllSelectors) (not $hasSelectorAllowList) -}}
 {{- fail "configure selectorPolicy.allowedKeys/allowedKeyPrefixes/configMap, or explicitly set selectorPolicy.allowAllSelectors=true when the provider account is already scoped to this trust boundary" -}}
@@ -121,8 +128,11 @@ Validate endpoint and credential configuration.
 {{- if not .Values.credentials.masterPassword -}}
 {{- fail "credentials.masterPassword is required when credentials.create=true" -}}
 {{- end -}}
-{{- if and .Values.auth.enabled (not .Values.credentials.webhookToken) -}}
+{{- if and .Values.auth.enabled (not $hasScopedAuthPolicy) (not .Values.credentials.webhookToken) -}}
 {{- fail "credentials.webhookToken is required when credentials.create=true and auth.enabled=true" -}}
+{{- end -}}
+{{- if and $hasScopedAuthPolicy .Values.credentials.webhookToken -}}
+{{- fail "credentials.webhookToken is unused when auth.scopedPolicy is configured" -}}
 {{- end -}}
 {{- end -}}
 {{- end -}}

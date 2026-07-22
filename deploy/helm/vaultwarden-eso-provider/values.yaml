@@ -104,10 +104,22 @@ selectorPolicy:
 auth:
   enabled: true
   insecureAllowUnauthenticated: false
+  # Optional capability-scoped authentication. When configured, this replaces
+  # the single credentials webhook token. The Secret key must contain the JSON
+  # policy documented in docs/selectors-and-policy.md. Projected Secret updates
+  # are re-read without restarting the provider; invalid updates retain the
+  # last known-good policy.
+  scopedPolicy:
+    existingSecret:
+      name: ""
+      key: auth-policy.json
+    # 0 reads once at startup and disables reloads.
+    reloadIntervalSeconds: 30
 
 credentials:
   # Prefer an existing Secret. Required keys default to:
-  # client-id, client-secret, master-password, webhook-token.
+  # client-id, client-secret, master-password, webhook-token. webhook-token is
+  # not required when auth.scopedPolicy.existingSecret.name is configured.
   existingSecret:
     name: ""
     keys:

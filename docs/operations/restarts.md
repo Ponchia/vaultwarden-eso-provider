@@ -18,12 +18,19 @@ Recommended options:
   for manual refreshes.
 
 Provider runtime credentials are read once during process startup. When rotating
-an externally managed Bitwarden/Vaultwarden API key, master password, or webhook
-bearer token, update the provider credential Secret, restart the provider pods so
-the mounted files are re-read, then force ESO to reconcile affected
-`ExternalSecret` resources. Existing Secret references are intentionally not
-checksummed by this chart because their contents are not visible to Helm; use a
-restart controller or an explicit rollout restart for those rotations.
+an externally managed Bitwarden/Vaultwarden API key, master password, or legacy
+single webhook bearer token, update the provider credential Secret, restart the
+provider pods so the mounted files are re-read, then force ESO to reconcile
+affected `ExternalSecret` resources. Existing Secret references are
+intentionally not checksummed by this chart because their contents are not
+visible to Helm; use a restart controller or an explicit rollout restart for
+those rotations.
+
+Capability-scoped auth policies are different: the provider re-reads their
+Secret-mounted JSON file on the configured interval. Add the replacement token
+to the capability, wait for a successful reload, update the workload namespace
+Secret, verify ESO reconciliation, and then remove the old token. This overlap
+rotates webhook access without restarting the provider or creating an outage.
 
 The live smoke script verifies that after the webhook Deployment restarts, ESO
 can force-refresh and keep the target Secret valid. That proves provider

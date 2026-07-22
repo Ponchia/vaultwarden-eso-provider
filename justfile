@@ -43,6 +43,7 @@ helm:
 # Validate Markdown and static YAML/JSON examples.
 docs:
   markdownlint-cli2 '**/*.md'
+  jq -e . docs/*.json >/dev/null
   jq -e . examples/grafana/*.json >/dev/null
   ruby -e 'require "yaml"; ARGV.each { |path| YAML.safe_load(File.read(path), aliases: true) }' examples/prometheus/*.yaml deploy/eso/*.yaml
 

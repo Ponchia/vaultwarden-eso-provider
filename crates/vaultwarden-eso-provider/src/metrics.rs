@@ -111,6 +111,36 @@ impl AppMetrics {
         });
     }
 
+    pub(crate) fn record_auth_policy_reload(
+        &self,
+        outcome: &'static str,
+        active_capabilities: usize,
+        active_tokens: usize,
+    ) {
+        self.record(|inner| {
+            *inner.auth_policy_reloads.entry(outcome).or_insert(0) += 1;
+            inner.auth_policy_active_capabilities = active_capabilities as u64;
+            inner.auth_policy_active_tokens = active_tokens as u64;
+            if outcome != "failure" {
+                inner.auth_policy_last_success = Some(SystemTime::now());
+            }
+        });
+    }
+
+    pub(crate) fn record_auth_policy_baseline(
+        &self,
+        active_capabilities: usize,
+        active_tokens: usize,
+    ) {
+        self.record(|inner| {
+            inner.auth_policy_active_capabilities = active_capabilities as u64;
+            inner.auth_policy_active_tokens = active_tokens as u64;
+            if inner.auth_policy_last_success.is_none() {
+                inner.auth_policy_last_success = Some(SystemTime::now());
+            }
+        });
+    }
+
     pub(crate) fn render(
         &self,
         ready: bool,
@@ -179,6 +209,7 @@ impl AppMetrics {
             render_cache_metrics(&mut output, cache_metrics);
         }
         render_policy_metrics(&mut output, &snapshot);
+        render_auth_policy_metrics(&mut output, &snapshot);
 
         output
     }
@@ -211,6 +242,10 @@ struct MetricsInner {
     policy_active_keys: u64,
     policy_active_key_prefixes: u64,
     policy_last_success: Option<SystemTime>,
+    auth_policy_reloads: BTreeMap<&'static str, u64>,
+    auth_policy_active_capabilities: u64,
+    auth_policy_active_tokens: u64,
+    auth_policy_last_success: Option<SystemTime>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
@@ -545,6 +580,117 @@ fn render_policy_metrics(output: &mut String, snapshot: &MetricsInner) {
     }
 }
 
+fn render_auth_policy_metrics(output: &mut String, snapshot: &MetricsInner) {
+    if snapshot.auth_policy_reloads.is_empty() && snapshot.auth_policy_last_success.is_none() {
+        return;
+    }
+
+    append_line(
+        output,
+        format_args!(
+            "# HELP bweso_auth_policy_reloads_total Token-scoped auth-policy reload cycles by outcome (success, unchanged, failure)."
+        ),
+    );
+    append_line(
+        output,
+        format_args!("# TYPE bweso_auth_policy_reloads_total counter"),
+    );
+    for outcome in ["success", "unchanged", "failure"] {
+        let count = snapshot
+            .auth_policy_reloads
+            .get(outcome)
+            .copied()
+            .unwrap_or(0);
+        append_labeled_metric(
+            output,
+            "bweso_auth_policy_reloads_total",
+            &[("outcome", outcome)],
+            &count.to_string(),
+        );
+    }
+
+    append_line(
+        output,
+        format_args!(
+            "# HELP bweso_auth_policy_active_capabilities Capabilities in the currently-served token-scoped auth policy."
+        ),
+    );
+    append_line(
+        output,
+        format_args!("# TYPE bweso_auth_policy_active_capabilities gauge"),
+    );
+    append_line(
+        output,
+        format_args!(
+            "bweso_auth_policy_active_capabilities {}",
+            snapshot.auth_policy_active_capabilities
+        ),
+    );
+    append_line(
+        output,
+        format_args!(
+            "# HELP bweso_auth_policy_active_tokens Bearer-token digests in the currently-served token-scoped auth policy."
+        ),
+    );
+    append_line(
+        output,
+        format_args!("# TYPE bweso_auth_policy_active_tokens gauge"),
+    );
+    append_line(
+        output,
+        format_args!(
+            "bweso_auth_policy_active_tokens {}",
+            snapshot.auth_policy_active_tokens
+        ),
+    );
+
+    render_auth_policy_last_success(output, snapshot.auth_policy_last_success);
+}
+
+fn render_auth_policy_last_success(output: &mut String, last_success: Option<SystemTime>) {
+    let Some(last_success) = last_success else {
+        return;
+    };
+    if let Ok(since_epoch) = last_success.duration_since(UNIX_EPOCH) {
+        append_line(
+            output,
+            format_args!(
+                "# HELP bweso_auth_policy_last_reload_success_timestamp_seconds Unix timestamp of the last successful token-scoped auth-policy evaluation."
+            ),
+        );
+        append_line(
+            output,
+            format_args!("# TYPE bweso_auth_policy_last_reload_success_timestamp_seconds gauge"),
+        );
+        append_line(
+            output,
+            format_args!(
+                "bweso_auth_policy_last_reload_success_timestamp_seconds {}",
+                since_epoch.as_secs()
+            ),
+        );
+    }
+    if let Ok(age) = SystemTime::now().duration_since(last_success) {
+        append_line(
+            output,
+            format_args!(
+                "# HELP bweso_auth_policy_last_reload_success_age_seconds Age in seconds of the last successful token-scoped auth-policy evaluation."
+            ),
+        );
+        append_line(
+            output,
+            format_args!("# TYPE bweso_auth_policy_last_reload_success_age_seconds gauge"),
+        );
+        append_line(
+            output,
+            format_args!(
+                "bweso_auth_policy_last_reload_success_age_seconds {}",
+                age.as_secs()
+            ),
+        );
+    }
+}
+
 fn append_histogram(
     output: &mut String,
     name: &str,
@@ -728,5 +874,21 @@ mod tests {
         // Counter family present but all zero — no reload cycle has run.
         assert!(output.contains("bweso_policy_reloads_total{outcome=\"success\"} 0"));
         assert!(output.contains("bweso_policy_reloads_total{outcome=\"failure\"} 0"));
+    }
+
+    #[test]
+    fn auth_policy_metrics_render_counts_without_capability_names() {
+        let metrics = AppMetrics::new();
+        metrics.record_auth_policy_baseline(2, 3);
+        metrics.record_auth_policy_reload("failure", 2, 3);
+
+        let output = metrics.render(true, None);
+
+        assert!(output.contains("bweso_auth_policy_active_capabilities 2"));
+        assert!(output.contains("bweso_auth_policy_active_tokens 3"));
+        assert!(output.contains("bweso_auth_policy_reloads_total{outcome=\"failure\"} 1"));
+        assert!(output.contains("bweso_auth_policy_last_reload_success_timestamp_seconds "));
+        assert!(!output.contains("app-a"));
+        assert!(!output.contains("id:item"));
     }
 }

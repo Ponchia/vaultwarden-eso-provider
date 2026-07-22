@@ -49,20 +49,24 @@ Leave these with their existing owners unless you have a separate design:
    inline `selectorPolicy.allowedKeys` / `selectorPolicy.allowedKeyPrefixes`
    only for static policy that can wait for a provider rollout.
 
-5. For each namespace using a namespace-local `SecretStore`, create a
-   token-only Secret containing the provider webhook token:
+5. Choose the webhook-auth model. If one provider serves multiple trust
+   boundaries, configure `auth.scopedPolicy` with one capability and token per
+   boundary. Otherwise, use the legacy global token.
+
+6. For each namespace using a namespace-local `SecretStore`, create a
+   token-only Secret containing that boundary's provider webhook token:
 
    ```bash
    kubectl -n app create secret generic bweso-webhook-auth \
-     --from-literal=webhook-token='same-provider-webhook-token'
+     --from-literal=webhook-token='token-for-this-trust-boundary'
    kubectl -n app label secret bweso-webhook-auth \
      external-secrets.io/type=webhook
    ```
 
-6. Create namespace-local `SecretStore` resources that use
+7. Create namespace-local `SecretStore` resources that use
    `bweso-webhook-auth`.
 
-7. Create `ExternalSecret` resources with:
+8. Create `ExternalSecret` resources with:
 
    ```yaml
    target:
@@ -78,7 +82,7 @@ Leave these with their existing owners unless you have a separate design:
          property: field.password
    ```
 
-8. Force a reconcile and wait for `Ready=True`:
+9. Force a reconcile and wait for `Ready=True`:
 
    ```bash
    kubectl -n app annotate externalsecret app-secret \
@@ -87,9 +91,10 @@ Leave these with their existing owners unless you have a separate design:
      --for=condition=Ready --timeout=180s
    ```
 
-9. Verify target Secret key sets and application health without printing values.
+10. Verify target Secret key sets and application health without printing
+    values.
 
-10. Recreate-test at least one low-risk target Secret:
+11. Recreate-test at least one low-risk target Secret:
 
     - capture a local hash of the existing Secret data;
     - delete the target Secret;

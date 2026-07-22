@@ -40,6 +40,7 @@ code.
 ## Reference
 
 - [Architecture](architecture.md)
+- [Capability-scoped auth policy schema](auth-policy.schema.json)
 - [Crypto notes](crypto-notes.md)
 - [Live testing](live-testing.md)
 - [Upstream research map](reference-map.md)

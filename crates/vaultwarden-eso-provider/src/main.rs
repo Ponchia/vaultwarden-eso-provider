@@ -26,17 +26,17 @@ use bweso_bitwarden::{
 use bweso_core::{require_non_empty, RemoteRef, SecretDocument};
 use clap::Parser;
 use http::{header, HeaderMap, Request, StatusCode};
-use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
-use subtle::ConstantTimeEq;
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 use url::Url;
 use zeroize::Zeroize;
 
+mod auth;
 mod lifecycle;
 mod metrics;
 
+use auth::{ScopedAuthPolicy, WebhookAuth};
 use lifecycle::Lifecycle;
 use metrics::{AppMetrics, PROMETHEUS_CONTENT_TYPE};
 
@@ -146,6 +146,18 @@ struct Args {
     webhook_auth_token: Option<String>,
     #[arg(long, env = "BWESO_WEBHOOK_AUTH_TOKEN_FILE")]
     webhook_auth_token_file: Option<PathBuf>,
+    /// Secret-mounted JSON file containing multiple bearer-token capabilities,
+    /// each with an independent selector allow-list. Mutually exclusive with
+    /// `BWESO_WEBHOOK_AUTH_TOKEN` and insecure unauthenticated mode.
+    #[arg(long, env = "BWESO_AUTH_POLICY_FILE")]
+    auth_policy_file: Option<PathBuf>,
+    /// How often to re-read `BWESO_AUTH_POLICY_FILE`. `0` reads once at startup.
+    #[arg(
+        long,
+        env = "BWESO_AUTH_POLICY_RELOAD_INTERVAL_SECONDS",
+        default_value_t = 30
+    )]
+    auth_policy_reload_interval_seconds: u64,
     #[arg(
         long,
         env = "BWESO_INSECURE_ALLOW_UNAUTHENTICATED",
@@ -199,7 +211,7 @@ async fn main() -> anyhow::Result<()> {
     let state = AppState {
         provider: provider_from_args(&args)?,
         selector_policy: SelectorPolicy::from_args(&args)?,
-        auth: WebhookAuth::from_args(&args)?,
+        auth: webhook_auth_from_args(&args)?,
         metrics: Arc::new(AppMetrics::new()),
         lifecycle: lifecycle.clone(),
         resolve_semaphore,
@@ -224,6 +236,18 @@ async fn main() -> anyhow::Result<()> {
         state.metrics.clone(),
         args.policy_reload_interval_seconds,
     );
+    if let Some(policy) = state.auth.scoped_policy() {
+        let (active_capabilities, active_tokens) = policy.counts();
+        state
+            .metrics
+            .record_auth_policy_baseline(active_capabilities, active_tokens);
+        let _ = spawn_auth_policy_reload(
+            policy,
+            lifecycle.clone(),
+            state.metrics.clone(),
+            args.auth_policy_reload_interval_seconds,
+        );
+    }
 
     let app = build_router(state);
 
@@ -248,7 +272,7 @@ fn resolve_semaphore(limit: u32) -> Option<Arc<tokio::sync::Semaphore>> {
 /// Immutable evaluated selector policy. Allow-all is an explicit variant, so
 /// an empty allow-list cannot accidentally widen access to every item.
 #[derive(Clone, Debug, Eq, PartialEq)]
-enum PolicyRules {
+pub(crate) enum PolicyRules {
     AllowAll,
     AllowList {
         allowed_keys: Vec<String>,
@@ -423,6 +447,15 @@ impl Args {
     }
 }
 
+fn webhook_auth_from_args(args: &Args) -> anyhow::Result<WebhookAuth> {
+    WebhookAuth::from_config(
+        args.webhook_auth_token.as_deref(),
+        args.webhook_auth_token_file.as_deref(),
+        args.auth_policy_file.as_deref(),
+        args.insecure_allow_unauthenticated,
+    )
+}
+
 fn zeroize_option(value: &mut Option<String>) {
     if let Some(secret) = value {
         secret.zeroize();
@@ -539,6 +572,51 @@ fn spawn_policy_reload(
             // failure). Counts only — never the selector keys themselves.
             let (active_keys, active_key_prefixes) = policy.snapshot().counts();
             metrics.record_policy_reload(outcome, active_keys, active_key_prefixes);
+        }
+    }))
+}
+
+fn spawn_auth_policy_reload(
+    policy: ScopedAuthPolicy,
+    lifecycle: Lifecycle,
+    metrics: Arc<AppMetrics>,
+    interval_seconds: u64,
+) -> Option<tokio::task::JoinHandle<()>> {
+    if interval_seconds == 0 {
+        tracing::info!("auth policy file reload disabled (interval 0); policy is fixed at startup");
+        return None;
+    }
+
+    Some(tokio::spawn(async move {
+        let mut ticker = tokio::time::interval(Duration::from_secs(interval_seconds));
+        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        ticker.tick().await;
+        loop {
+            tokio::select! {
+                _ = ticker.tick() => {}
+                () = lifecycle.shutdown_requested() => break,
+            }
+            if !lifecycle.is_ready() {
+                break;
+            }
+            let outcome = match policy.reload() {
+                Ok(true) => {
+                    let (active_capabilities, active_tokens) = policy.counts();
+                    tracing::info!(active_capabilities, active_tokens, "auth policy reloaded");
+                    "success"
+                }
+                Ok(false) => "unchanged",
+                Err(error) => {
+                    let error = format!("{error:#}");
+                    tracing::warn!(
+                        error = %error,
+                        "auth policy reload failed; keeping previous policy"
+                    );
+                    "failure"
+                }
+            };
+            let (active_capabilities, active_tokens) = policy.counts();
+            metrics.record_auth_policy_reload(outcome, active_capabilities, active_tokens);
         }
     }))
 }
@@ -708,88 +786,6 @@ fn endpoints_from_args(args: &Args) -> anyhow::Result<BitwardenEndpoints> {
     }
 }
 
-#[derive(Clone)]
-enum WebhookAuth {
-    Required(Arc<SecretString>),
-    DisabledInsecure,
-}
-
-impl WebhookAuth {
-    fn from_args(args: &Args) -> anyhow::Result<Self> {
-        let token = read_optional_sensitive_arg(
-            args.webhook_auth_token.as_deref(),
-            args.webhook_auth_token_file.as_deref(),
-            "webhook_auth_token",
-        )?;
-        match (token, args.insecure_allow_unauthenticated) {
-            (Some(mut token), true) => {
-                token.zeroize();
-                bail!(
-                    "configure either BWESO_WEBHOOK_AUTH_TOKEN or BWESO_INSECURE_ALLOW_UNAUTHENTICATED=true, not both"
-                )
-            }
-            (Some(token), false) => Ok(Self::Required(Arc::new(token.into()))),
-            (None, true) => {
-                tracing::warn!(
-                    "webhook authentication is disabled; use only for local or isolated tests"
-                );
-                Ok(Self::DisabledInsecure)
-            }
-            (None, false) => bail!(
-                "configure BWESO_WEBHOOK_AUTH_TOKEN, or explicitly set BWESO_INSECURE_ALLOW_UNAUTHENTICATED=true for local tests"
-            ),
-        }
-    }
-
-    fn is_authorized(&self, headers: &HeaderMap) -> bool {
-        match self {
-            Self::DisabledInsecure => true,
-            Self::Required(expected) => {
-                let Some(raw) = headers.get(header::AUTHORIZATION) else {
-                    return false;
-                };
-                let Ok(raw) = raw.to_str() else {
-                    return false;
-                };
-                let Some((scheme, token)) = raw.split_once(' ') else {
-                    return false;
-                };
-                scheme.eq_ignore_ascii_case("Bearer")
-                    && !token.is_empty()
-                    && token.trim() == token
-                    && expected
-                        .expose_secret()
-                        .as_bytes()
-                        .ct_eq(token.as_bytes())
-                        .into()
-            }
-        }
-    }
-}
-
-fn read_optional_sensitive_arg(
-    value: Option<&str>,
-    file: Option<&Path>,
-    name: &'static str,
-) -> anyhow::Result<Option<String>> {
-    match (value, file) {
-        (Some(_), Some(_)) => bail!("configure either {name} or {name}_file, not both"),
-        (Some(value), None) => {
-            require_non_empty(value, name)?;
-            Ok(Some(value.to_string()))
-        }
-        (None, Some(path)) => {
-            let resolved = fs::read_to_string(path)
-                .with_context(|| format!("failed to read {name}_file"))?
-                .trim_end_matches(['\r', '\n'])
-                .to_string();
-            require_non_empty(&resolved, name)?;
-            Ok(Some(resolved))
-        }
-        (None, None) => Ok(None),
-    }
-}
-
 fn load_extra_root_certificates(path: Option<&Path>) -> anyhow::Result<Vec<reqwest::Certificate>> {
     let Some(path) = path else {
         return Ok(Vec::new());
@@ -881,7 +877,7 @@ async fn resolve(
     request: Request<Body>,
 ) -> Result<Json<SecretDocument>, (StatusCode, Json<ErrorResponse>)> {
     let started = Instant::now();
-    if !state.auth.is_authorized(request.headers()) {
+    let Some(auth_scope) = state.auth.authorize(request.headers()) else {
         state.metrics.record_resolve_request(
             StatusCode::UNAUTHORIZED,
             "error",
@@ -889,7 +885,7 @@ async fn resolve(
             started.elapsed(),
         );
         return Err(auth_error());
-    }
+    };
 
     let request = match tokio::time::timeout(
         RESOLVE_BODY_READ_TIMEOUT,
@@ -947,7 +943,7 @@ async fn resolve(
         }
     };
 
-    if !state.selector_policy.allows(&selector.key) {
+    if !state.selector_policy.allows(&selector.key) || !auth_scope.allows(&selector.key) {
         let status = StatusCode::FORBIDDEN;
         state
             .metrics
@@ -1149,7 +1145,7 @@ mod tests {
     use http::{header, Method, Request};
     use tower::ServiceExt;
 
-    type TestResult = Result<(), Box<dyn std::error::Error>>;
+    type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
 
     struct StaticProvider;
 
@@ -1207,10 +1203,13 @@ mod tests {
     }
 
     fn test_state_with_auth(provider: Arc<dyn BitwardenProvider>, token: &str) -> AppState {
+        let Ok(auth) = WebhookAuth::from_config(Some(token), None, None, false) else {
+            unreachable!("test webhook token should configure legacy auth");
+        };
         AppState {
             provider,
             selector_policy: test_allow_all_selector_policy(),
-            auth: WebhookAuth::Required(Arc::new(token.to_string().into())),
+            auth,
             metrics: Arc::new(AppMetrics::new()),
             lifecycle: Lifecycle::default(),
             resolve_semaphore: Some(Arc::new(tokio::sync::Semaphore::new(16))),
@@ -1219,6 +1218,16 @@ mod tests {
 
     fn test_allow_all_selector_policy() -> SelectorPolicy {
         SelectorPolicy::from_rules(PolicyRules::AllowAll, PolicySources::default())
+    }
+
+    fn test_selector_policy(allowed_keys: &[&str]) -> SelectorPolicy {
+        SelectorPolicy::from_rules(
+            PolicyRules::AllowList {
+                allowed_keys: allowed_keys.iter().map(|key| (*key).to_string()).collect(),
+                allowed_key_prefixes: Vec::new(),
+            },
+            PolicySources::default(),
+        )
     }
 
     fn valid_args() -> Args {
@@ -1251,6 +1260,8 @@ mod tests {
             resolve_concurrency_limit: 16,
             webhook_auth_token: Some("test-webhook-token".to_string()),
             webhook_auth_token_file: None,
+            auth_policy_file: None,
+            auth_policy_reload_interval_seconds: 30,
             insecure_allow_unauthenticated: false,
             healthcheck_url: None,
         }
@@ -1260,6 +1271,7 @@ mod tests {
     fn security_related_size_limits_stay_at_documented_values() {
         assert_eq!(RESOLVE_BODY_LIMIT_BYTES, 16 * 1024);
         assert_eq!(MAX_POLICY_FILE_BYTES, 4 * 1024 * 1024);
+        assert_eq!(auth::MAX_AUTH_POLICY_FILE_BYTES, 1024 * 1024);
     }
 
     #[test]
@@ -1403,13 +1415,13 @@ mod tests {
         let mut args = valid_args();
         args.webhook_auth_token = None;
 
-        let Some(error) = WebhookAuth::from_args(&args).err() else {
+        let Some(error) = webhook_auth_from_args(&args).err() else {
             unreachable!("missing webhook token should fail");
         };
         assert!(error.to_string().contains("BWESO_WEBHOOK_AUTH_TOKEN"));
 
         args.insecure_allow_unauthenticated = true;
-        if let Err(error) = WebhookAuth::from_args(&args) {
+        if let Err(error) = webhook_auth_from_args(&args) {
             unreachable!("explicit insecure local mode should be accepted: {error:#}");
         }
     }
@@ -1419,7 +1431,7 @@ mod tests {
         let mut args = valid_args();
         args.webhook_auth_token = Some(" ".to_string());
 
-        let Some(error) = WebhookAuth::from_args(&args).err() else {
+        let Some(error) = webhook_auth_from_args(&args).err() else {
             unreachable!("blank webhook token should fail");
         };
         assert!(error
@@ -1863,6 +1875,99 @@ frW69DSxg6/fcNRyvdTH+twvVnzH
         unreachable!("policy reload task did not pick up file changes while ready");
     }
 
+    #[tokio::test]
+    async fn selector_and_auth_reload_tasks_both_stop_on_shutdown() -> TestResult {
+        let selector_file = TempPolicyFile::new("selector-shared-shutdown");
+        selector_file.write("id:item-a\n")?;
+        let mut args = valid_args();
+        args.allowed_keys_file = Some(selector_file.path());
+        args.allow_all_selectors = false;
+        let selector_policy = SelectorPolicy::from_args(&args)?;
+
+        let auth_file = TempPolicyFile::new("auth-shared-shutdown");
+        auth_file.write(
+            r#"{"version":1,"capabilities":[{"name":"app-a","tokens":["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],"allowedKeys":["id:item-a"]}]}"#,
+        )?;
+        let auth = WebhookAuth::from_config(None, None, Some(&auth_file.path()), false)?;
+        let Some(auth_policy) = auth.scoped_policy() else {
+            unreachable!("test auth policy should be reloadable");
+        };
+
+        let lifecycle = Lifecycle::default();
+        let metrics = Arc::new(AppMetrics::new());
+        let Some(selector_handle) =
+            spawn_policy_reload(selector_policy, lifecycle.clone(), metrics.clone(), 3_600)
+        else {
+            unreachable!("selector reload task should start");
+        };
+        let Some(auth_handle) =
+            spawn_auth_policy_reload(auth_policy, lifecycle.clone(), metrics, 3_600)
+        else {
+            unreachable!("auth reload task should start");
+        };
+
+        lifecycle.mark_shutting_down();
+        let joined = tokio::time::timeout(Duration::from_secs(5), async {
+            tokio::join!(selector_handle, auth_handle)
+        })
+        .await;
+        let Ok((selector_result, auth_result)) = joined else {
+            unreachable!("both reload tasks should stop promptly");
+        };
+        selector_result?;
+        auth_result?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn auth_policy_reload_task_activates_new_token_and_records_metrics() -> TestResult {
+        const TOKEN_INITIAL: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        const TOKEN_UPDATED: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+        let auth_file = TempPolicyFile::new("auth-task-reload");
+        auth_file.write(&format!(
+            r#"{{"version":1,"capabilities":[{{"name":"app","tokens":["{TOKEN_INITIAL}"],"allowedKeys":["id:item"]}}]}}"#
+        ))?;
+        let auth = WebhookAuth::from_config(None, None, Some(&auth_file.path()), false)?;
+        let Some(auth_policy) = auth.scoped_policy() else {
+            unreachable!("test auth policy should be reloadable");
+        };
+        let lifecycle = Lifecycle::default();
+        let metrics = Arc::new(AppMetrics::new());
+        let Some(handle) =
+            spawn_auth_policy_reload(auth_policy, lifecycle.clone(), metrics.clone(), 1)
+        else {
+            unreachable!("auth reload task should start");
+        };
+
+        auth_file.write(&format!(
+            r#"{{"version":1,"capabilities":[{{"name":"app","tokens":["{TOKEN_UPDATED}"],"allowedKeys":["id:item"]}}]}}"#
+        ))?;
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            header::AUTHORIZATION,
+            format!("Bearer {TOKEN_UPDATED}").parse()?,
+        );
+        let deadline = Instant::now() + Duration::from_secs(3);
+        while Instant::now() < deadline {
+            if auth.authorize(&headers).is_some() {
+                lifecycle.mark_shutting_down();
+                let joined = tokio::time::timeout(Duration::from_secs(2), handle).await;
+                let Ok(join_result) = joined else {
+                    unreachable!("auth reload task should stop after test shutdown");
+                };
+                join_result?;
+                let output = metrics.render(true, None);
+                assert!(output.contains("bweso_auth_policy_reloads_total{outcome=\"success\"} 1"));
+                return Ok(());
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+
+        lifecycle.mark_shutting_down();
+        handle.abort();
+        unreachable!("auth policy reload task did not activate the updated token");
+    }
+
     #[test]
     fn public_error_messages_cover_all_error_classes() {
         let expected = [
@@ -2018,10 +2123,23 @@ frW69DSxg6/fcNRyvdTH+twvVnzH
         expected_prefix: &str,
     ) -> std::io::Result<()> {
         let mut request = [0_u8; 512];
-        let len = stream.read(&mut request)?;
+        let mut len = 0usize;
+        while len < request.len() {
+            let read = stream.read(&mut request[len..])?;
+            if read == 0 {
+                break;
+            }
+            len += read;
+            if request[..len]
+                .windows(4)
+                .any(|window| window == b"\r\n\r\n")
+            {
+                break;
+            }
+        }
         let request = std::str::from_utf8(&request[..len])
             .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?;
-        if request.starts_with(expected_prefix) {
+        if request.starts_with(expected_prefix) && request.ends_with("\r\n\r\n") {
             return Ok(());
         }
 
@@ -2193,6 +2311,93 @@ frW69DSxg6/fcNRyvdTH+twvVnzH
             )
             .await?;
         assert_eq!(response.status(), StatusCode::OK);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn resolve_enforces_scoped_and_global_selector_policies() -> TestResult {
+        const TOKEN_A: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        const TOKEN_B: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+        let file = TempPolicyFile::new("scoped-auth-api");
+        file.write(&format!(
+            r#"{{
+  "version": 1,
+  "capabilities": [
+    {{"name":"app-a","tokens":["{TOKEN_A}"],"allowedKeys":["id:item-a"]}},
+    {{"name":"app-b","tokens":["{TOKEN_B}"],"allowedKeys":["id:item-b"]}}
+  ]
+}}"#
+        ))?;
+        let auth = WebhookAuth::from_config(None, None, Some(&file.path()), false)?;
+        let state = AppState {
+            provider: Arc::new(StaticProvider),
+            selector_policy: test_selector_policy(&["id:item-a", "id:item-b"]),
+            auth: auth.clone(),
+            metrics: Arc::new(AppMetrics::new()),
+            lifecycle: Lifecycle::default(),
+            resolve_semaphore: Some(Arc::new(tokio::sync::Semaphore::new(16))),
+        };
+        let app = build_router(state);
+
+        let allowed = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/v1/resolve")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .header(header::AUTHORIZATION, format!("Bearer {TOKEN_A}"))
+                    .body(Body::from(r#"{"remoteRef":{"key":"id:item-a"}}"#))?,
+            )
+            .await?;
+        assert_eq!(allowed.status(), StatusCode::OK);
+
+        let cross_capability = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/v1/resolve")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .header(header::AUTHORIZATION, format!("Bearer {TOKEN_A}"))
+                    .body(Body::from(r#"{"remoteRef":{"key":"id:item-b"}}"#))?,
+            )
+            .await?;
+        assert_eq!(cross_capability.status(), StatusCode::FORBIDDEN);
+
+        let unknown_token = app
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/v1/resolve")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .header(
+                        header::AUTHORIZATION,
+                        "Bearer cccccccccccccccccccccccccccccccc",
+                    )
+                    .body(Body::from(r#"{"remoteRef":{"key":"id:item-a"}}"#))?,
+            )
+            .await?;
+        assert_eq!(unknown_token.status(), StatusCode::UNAUTHORIZED);
+
+        let globally_restricted = build_router(AppState {
+            provider: Arc::new(StaticProvider),
+            selector_policy: test_selector_policy(&["id:item-a"]),
+            auth,
+            metrics: Arc::new(AppMetrics::new()),
+            lifecycle: Lifecycle::default(),
+            resolve_semaphore: Some(Arc::new(tokio::sync::Semaphore::new(16))),
+        })
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/v1/resolve")
+                .header(header::CONTENT_TYPE, "application/json")
+                .header(header::AUTHORIZATION, format!("Bearer {TOKEN_B}"))
+                .body(Body::from(r#"{"remoteRef":{"key":"id:item-b"}}"#))?,
+        )
+        .await?;
+        assert_eq!(globally_restricted.status(), StatusCode::FORBIDDEN);
         Ok(())
     }
 
