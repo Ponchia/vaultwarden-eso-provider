@@ -29,8 +29,8 @@ This project should own:
 - Local decryption and field extraction.
 - Master-password user-key unlock.
 - Bitwarden and Vaultwarden API-key login and sync.
-- Provider-level caching, single-flight refresh, and global concurrency
-  shedding.
+- Provider-level caching with concurrent fresh-cache reads, single-flight
+  refresh, and global concurrency shedding.
 - Provider-side selector policy to constrain which raw ESO `remoteRef.key` or
   `dataFrom.extract.key` values a deployment may resolve. This is an item-key
   boundary, not per-property authorization.

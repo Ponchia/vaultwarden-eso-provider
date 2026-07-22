@@ -63,11 +63,13 @@ Current series:
 <!-- markdownlint-enable MD013 -->
 
 Resolution labels are intentionally coarse. They expose classes like
-`auth`, `validation`, `policy_denied`, `not_found`, `ambiguous_selector`,
+`auth`, `validation`, `policy_denied`, `item_not_found`,
+`property_not_found`, `ambiguous_selector`, `ambiguous_document`,
 `unsupported_attachment`, `unsupported_shared_item`, `upstream_http`,
-`upstream_status`, `crypto`, `key_derivation`, `kdf_parameters`,
-`sync_payload`, `endpoint`, and `unsupported_version`. They do not expose vault
-item IDs, item names, requested properties, usernames, URLs, or secret values.
+`upstream_status`, `upstream_payload`, `request_timeout`, `crypto`,
+`key_derivation`, `kdf_parameters`, `sync_payload`, `endpoint`, and
+`unsupported_version`. They do not expose vault item IDs, item names, requested
+properties, usernames, URLs, or secret values.
 
 ## Prometheus Operator
 

@@ -338,6 +338,11 @@ impl DecryptedCipher {
         for field in &self.fields {
             if let (Some(name), Some(value)) = (&field.name, &field.value) {
                 if !name.trim().is_empty() {
+                    if document.data.contains_key(name) {
+                        return Err(CipherError::DuplicateDocumentField {
+                            field: name.clone(),
+                        });
+                    }
                     document.data.insert(name.clone(), value.clone());
                 }
             }
@@ -449,6 +454,12 @@ pub enum CipherError {
         /// Cipher identifier.
         id: String,
     },
+    /// Whole-item extraction found two values for the same Secret key.
+    #[error("cipher has duplicate secret document fields")]
+    DuplicateDocumentField {
+        /// Conflicting field name.
+        field: String,
+    },
     /// Attachment download and decryption is intentionally out of scope for this release.
     #[error("Bitwarden attachment extraction is not supported by this provider release")]
     UnsupportedAttachment,
@@ -461,6 +472,7 @@ impl fmt::Debug for CipherError {
             Self::BlankProperty => formatter.write_str("BlankProperty"),
             Self::MissingProperty { .. } => formatter.write_str("MissingProperty"),
             Self::NoExtractableFields { .. } => formatter.write_str("NoExtractableFields"),
+            Self::DuplicateDocumentField { .. } => formatter.write_str("DuplicateDocumentField"),
             Self::UnsupportedAttachment => formatter.write_str("UnsupportedAttachment"),
         }
     }
@@ -731,9 +743,16 @@ mod tests {
         let no_extractable_fields = CipherError::NoExtractableFields {
             id: "cipher-id-secret".to_string(),
         };
+        let duplicate_document_field = CipherError::DuplicateDocumentField {
+            field: "field-name-secret".to_string(),
+        };
 
         assert_eq!(format!("{missing_property:?}"), "MissingProperty");
         assert_eq!(format!("{no_extractable_fields:?}"), "NoExtractableFields");
+        assert_eq!(
+            format!("{duplicate_document_field:?}"),
+            "DuplicateDocumentField"
+        );
     }
 
     #[test]
@@ -773,6 +792,33 @@ mod tests {
             "custom-password"
         );
         Ok(())
+    }
+
+    #[test]
+    fn whole_cipher_document_rejects_colliding_custom_fields() {
+        let decrypted = DecryptedCipher {
+            id: "cipher".to_string(),
+            cipher_type: 1,
+            organization_id: None,
+            name: Some("item-name".to_string()),
+            notes: None,
+            fields: vec![DecryptedField {
+                name: Some("password".to_string()),
+                value: Some("custom-password".to_string()),
+                field_type: Some(1),
+            }],
+            login: Some(DecryptedLogin {
+                username: Some("login-user".to_string()),
+                password: Some("login-password".to_string()),
+                totp: None,
+            }),
+            ssh_key: None,
+        };
+
+        let Err(error) = decrypted.to_secret_document() else {
+            unreachable!("ambiguous whole-item extraction should fail closed");
+        };
+        assert!(matches!(error, CipherError::DuplicateDocumentField { .. }));
     }
 
     #[test]

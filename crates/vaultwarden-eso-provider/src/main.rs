@@ -41,6 +41,7 @@ use lifecycle::Lifecycle;
 use metrics::{AppMetrics, PROMETHEUS_CONTENT_TYPE};
 
 const RESOLVE_BODY_LIMIT_BYTES: usize = 16 * 1024;
+const RESOLVE_BODY_READ_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Parser)]
 #[command(author, version, about)]
@@ -874,6 +875,33 @@ async fn resolve(
         return Err(auth_error());
     }
 
+    let request = match tokio::time::timeout(
+        RESOLVE_BODY_READ_TIMEOUT,
+        decode_resolve_request(request),
+    )
+    .await
+    {
+        Ok(Ok(request)) => request,
+        Ok(Err(status)) => {
+            state
+                .metrics
+                .record_resolve_request(status, "error", "validation", started.elapsed());
+            return Err(public_error(status, "validation"));
+        }
+        Err(_) => {
+            let status = StatusCode::REQUEST_TIMEOUT;
+            state.metrics.record_resolve_request(
+                status,
+                "error",
+                "request_timeout",
+                started.elapsed(),
+            );
+            return Err(public_error(status, "request_timeout"));
+        }
+    };
+
+    // Reading a slow authenticated request body must not consume one of the
+    // scarce upstream/decryption permits. Only admitted, decoded work counts.
     let _permit = match state
         .resolve_semaphore
         .as_ref()
@@ -889,16 +917,6 @@ async fn resolve(
                 started.elapsed(),
             );
             return Err(public_error(StatusCode::SERVICE_UNAVAILABLE, "overloaded"));
-        }
-    };
-
-    let request = match decode_resolve_request(request).await {
-        Ok(request) => request,
-        Err(status) => {
-            state
-                .metrics
-                .record_resolve_request(status, "error", "validation", started.elapsed());
-            return Err(public_error(status, "validation"));
         }
     };
 
@@ -994,9 +1012,14 @@ fn provider_status_and_kind(error: &BitwardenClientError) -> (StatusCode, &'stat
         | BitwardenClientError::Cipher(CipherError::BlankProperty) => {
             (StatusCode::BAD_REQUEST, "validation")
         }
-        BitwardenClientError::Cipher(CipherError::MissingProperty { .. })
-        | BitwardenClientError::Api(BitwardenApiError::CipherNotFound) => {
-            (StatusCode::NOT_FOUND, "not_found")
+        BitwardenClientError::Cipher(CipherError::MissingProperty { .. }) => {
+            (StatusCode::NOT_FOUND, "property_not_found")
+        }
+        BitwardenClientError::Api(BitwardenApiError::CipherNotFound) => {
+            (StatusCode::NOT_FOUND, "item_not_found")
+        }
+        BitwardenClientError::Cipher(CipherError::DuplicateDocumentField { .. }) => {
+            (StatusCode::CONFLICT, "ambiguous_document")
         }
         BitwardenClientError::Cipher(CipherError::UnsupportedAttachment) => {
             (StatusCode::UNPROCESSABLE_ENTITY, "unsupported_attachment")
@@ -1013,6 +1036,9 @@ fn provider_status_and_kind(error: &BitwardenClientError) -> (StatusCode, &'stat
         BitwardenClientError::Api(BitwardenApiError::HttpStatus { .. }) => {
             (StatusCode::BAD_GATEWAY, "upstream_status")
         }
+        BitwardenClientError::Api(
+            BitwardenApiError::ResponseTooLarge { .. } | BitwardenApiError::InvalidJson { .. },
+        ) => (StatusCode::BAD_GATEWAY, "upstream_payload"),
         BitwardenClientError::Crypto(_)
         | BitwardenClientError::Cipher(
             CipherError::Crypto(_) | CipherError::NoExtractableFields { .. },
@@ -1045,18 +1071,23 @@ fn public_error_message(error_kind: &str) -> &'static str {
         "validation" => "invalid resolve request",
         "unsupported_version" => "remoteRef.version is not supported",
         "policy_denied" => "requested Bitwarden item is not allowed by provider policy",
-        "not_found" => "requested Bitwarden item or property was not found",
+        "item_not_found" | "property_not_found" => {
+            "requested Bitwarden item or property was not found"
+        }
+        "ambiguous_document" => "selected Bitwarden item contains conflicting whole-item fields",
         "ambiguous_selector" => "requested Bitwarden item name is ambiguous; use the item ID",
         "unsupported_attachment" => "Bitwarden attachment extraction is not supported",
         "unsupported_shared_item" => "shared organization Bitwarden items are not supported",
         "upstream_http" => "Bitwarden-compatible upstream request failed",
         "upstream_status" => "Bitwarden-compatible upstream returned an error status",
+        "upstream_payload" => "Bitwarden-compatible upstream returned an invalid payload",
         "crypto" => "failed to decrypt selected Bitwarden item",
         "key_derivation" => "failed to unlock Bitwarden vault key",
         "kdf_parameters" => "Bitwarden-compatible KDF parameters are unsupported",
         "sync_payload" => "Bitwarden-compatible sync payload is missing required unlock data",
         "endpoint" => "provider endpoint configuration is invalid",
         "overloaded" => "provider is at concurrency limit; retry shortly",
+        "request_timeout" => "provider request body timed out",
         _ => "provider request failed",
     }
 }
@@ -1808,8 +1839,16 @@ frW69DSxg6/fcNRyvdTH+twvVnzH
                 "requested Bitwarden item is not allowed by provider policy",
             ),
             (
-                "not_found",
+                "item_not_found",
                 "requested Bitwarden item or property was not found",
+            ),
+            (
+                "property_not_found",
+                "requested Bitwarden item or property was not found",
+            ),
+            (
+                "ambiguous_document",
+                "selected Bitwarden item contains conflicting whole-item fields",
             ),
             (
                 "ambiguous_selector",
@@ -1831,6 +1870,10 @@ frW69DSxg6/fcNRyvdTH+twvVnzH
                 "upstream_status",
                 "Bitwarden-compatible upstream returned an error status",
             ),
+            (
+                "upstream_payload",
+                "Bitwarden-compatible upstream returned an invalid payload",
+            ),
             ("crypto", "failed to decrypt selected Bitwarden item"),
             ("key_derivation", "failed to unlock Bitwarden vault key"),
             (
@@ -1846,6 +1889,7 @@ frW69DSxg6/fcNRyvdTH+twvVnzH
                 "overloaded",
                 "provider is at concurrency limit; retry shortly",
             ),
+            ("request_timeout", "provider request body timed out"),
             ("unknown", "provider request failed"),
         ];
 
@@ -1866,6 +1910,28 @@ frW69DSxg6/fcNRyvdTH+twvVnzH
         assert_eq!(
             provider_status_and_kind(&shared_error),
             (StatusCode::UNPROCESSABLE_ENTITY, "unsupported_shared_item")
+        );
+
+        let duplicate_error = BitwardenClientError::from(CipherError::DuplicateDocumentField {
+            field: "password".to_string(),
+        });
+        assert_eq!(
+            provider_status_and_kind(&duplicate_error),
+            (StatusCode::CONFLICT, "ambiguous_document")
+        );
+
+        let property_error = BitwardenClientError::from(CipherError::MissingProperty {
+            property: "password".to_string(),
+        });
+        assert_eq!(
+            provider_status_and_kind(&property_error),
+            (StatusCode::NOT_FOUND, "property_not_found")
+        );
+
+        let item_error = BitwardenClientError::from(BitwardenApiError::CipherNotFound);
+        assert_eq!(
+            provider_status_and_kind(&item_error),
+            (StatusCode::NOT_FOUND, "item_not_found")
         );
     }
 
