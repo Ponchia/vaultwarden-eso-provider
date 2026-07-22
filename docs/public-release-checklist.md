@@ -16,9 +16,9 @@ compatibility/security claim that needs to be tied to an exact artifact.
 
 For the pre-`v1.0.0` line, use a minor version bump for breaking runtime or
 chart-default changes. Use a patch version only for compatible fixes and
-documentation/packaging corrections. The current unreleased selector-policy and
-NetworkPolicy default changes should therefore ship as `v0.3.0`, not `v0.2.2`,
-if they are published.
+documentation or packaging corrections. `v0.4.0` is the current release; do
+not describe work after that tag as released until its publishing workflow has
+completed successfully.
 
 Required before calling a release generally usable:
 
