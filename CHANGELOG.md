@@ -12,6 +12,21 @@ before release so generated notes land in the right category.
 
 - Nothing yet.
 
+## v0.4.0 - 2026-07-22
+
+- Reject ambiguous whole-item documents when custom fields collide with
+  conventional login, notes, or SSH-key fields instead of silently replacing
+  values.
+- Allow concurrent reads from a fresh encrypted vault cache while retaining
+  single-flight refreshes.
+- Bound successful upstream JSON responses at 32 MiB and bound authenticated
+  resolve-body reads at 10 seconds.
+- Read and validate request bodies before taking a resolve-concurrency permit,
+  preventing slow clients from occupying upstream/decryption capacity.
+- Split missing-item and missing-property metrics into `item_not_found` and
+  `property_not_found`, and add `ambiguous_document`, `upstream_payload`, and
+  `request_timeout` error classes.
+
 ## v0.3.0 - 2026-06-12
 
 - Breaking: hardened selector-policy defaults so installs must configure an

@@ -46,7 +46,7 @@ unreleased `main` builds, clone the repository and use
 Set the release chart reference:
 
 ```bash
-CHART_VERSION=0.3.0
+CHART_VERSION=0.4.0
 CHART_REF="oci://ghcr.io/ponchia/charts/vaultwarden-eso-provider"
 ```
 
@@ -240,7 +240,9 @@ Whole-item `dataFrom.extract` uses a separate webhook `SecretStore` shape with
 and [`../../deploy/eso/whole-item.example.yaml`](../../deploy/eso/whole-item.example.yaml).
 Whole-item extraction exposes every extractable conventional field and custom
 field on the selected item, so prefer one-field `data` entries when you need a
-narrower target Secret.
+narrower target Secret. If a custom field has the same output name as a
+conventional login, notes, or SSH-key field, whole-item extraction fails closed
+with `409 ambiguous_document` instead of choosing one value silently.
 
 The chart configures startup, liveness, and readiness probes by default:
 
@@ -293,8 +295,11 @@ Common redacted error classes:
 | `auth` | Check the token-only auth Secret and header template. |
 | `validation` | Check `id:`/`name:` selector prefixes and JSON syntax. |
 | `policy_denied` | Add the selector or use the correct provider instance. |
-| `not_found` | Check item ID/name and property without posting values. |
+| `item_not_found` | Check the item ID/name without posting values. |
+| `property_not_found` | Check the requested property without posting values. |
+| `ambiguous_document` | Remove duplicate output keys or select one property. |
 | `upstream_*` | Check reachability, TLS trust, and credentials. |
+| `request_timeout` | Check for a slow or stalled client request body. |
 
 ## Resource Sizing
 

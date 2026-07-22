@@ -93,7 +93,7 @@ default (`BWESO_E2E_POLICY_MODE=configmap`). The ConfigMap initially contains
 only the selected item and one deliberate missing item. That proves allowed
 selectors still sync and disallowed selectors fail with redacted `403`
 responses. The script then updates the ConfigMap to include the previously
-denied item and waits until the provider returns `404 not_found` instead of
+denied item and waits until the provider returns `404 item_not_found` instead of
 `403 policy_denied`, proving the no-restart hot-reload path. Set
 `BWESO_E2E_POLICY_MODE=inline` only when testing old chart behavior where policy
 changes intentionally require a provider restart.
@@ -145,9 +145,9 @@ For a tagged public release, set the OCI chart explicitly so the smoke test
 does not use the local checkout:
 
 ```bash
-export BWESO_E2E_IMAGE_TAG="0.3.0"
+export BWESO_E2E_IMAGE_TAG="0.4.0"
 export BWESO_E2E_CHART_REF="oci://ghcr.io/ponchia/charts/vaultwarden-eso-provider"
-export BWESO_E2E_CHART_VERSION="0.3.0"
+export BWESO_E2E_CHART_VERSION="0.4.0"
 ```
 
 To smoke-test the `.tgz` attached to a GitHub Release instead, set

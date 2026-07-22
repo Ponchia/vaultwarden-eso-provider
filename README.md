@@ -34,7 +34,7 @@ the External Secrets Operator project.
 
 ## Status
 
-`v0.3.0` is the current public release. The provider is functional and has been
+`v0.4.0` is the current public release. The provider is functional and has been
 smoke-tested end-to-end against released chart and image paths, but it is still
 pre-`v1.0.0`: chart values, image tags, and crate APIs may change, there is no
 production soak time, and the project currently has a single maintainer.
@@ -105,7 +105,7 @@ Install the released chart for a Vaultwarden or single-origin self-hosted
 Bitwarden server:
 
 ```bash
-CHART_VERSION=0.3.0
+CHART_VERSION=0.4.0
 CHART_REF="oci://ghcr.io/ponchia/charts/vaultwarden-eso-provider"
 
 helm upgrade --install bweso "${CHART_REF}" \
