@@ -127,6 +127,8 @@ After the provider is installed, create a namespace-local ESO `SecretStore` and
 
 - ESO calls `/v1/resolve` through its generic webhook provider.
 - The provider authenticates the webhook bearer token before parsing the body.
+- Unreleased `main` can bind different bearer tokens to independent selector
+  allowlists while retaining the global selector policy as an upper bound.
 - It logs in with a dedicated Vaultwarden or Bitwarden user API key.
 - It unlocks the user vault locally with the configured master password.
 - It resolves `id:<item-id>` or `name:<item-name>` selectors to item fields.
@@ -149,6 +151,9 @@ See [Architecture](docs/architecture.md) for the design and trade-offs.
   ingress, or gateway when the pod network is not a trusted boundary.
 - Selector policy is item-key scoped, not property scoped. If a namespace can
   request an allowed item, it can request any property on that item.
+- A legacy single webhook token grants the global selector-policy scope. For a
+  shared provider serving different namespace trust boundaries, use the
+  capability-scoped auth policy available on unreleased `main`.
 
 Read the [Threat Model](docs/threat-model.md) before production use.
 

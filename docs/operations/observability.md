@@ -60,6 +60,11 @@ Current series:
 | `bweso_policy_active_allowed_key_prefixes` | gauge | none | Count of selector key prefixes in the active allowlist. |
 | `bweso_policy_last_reload_success_timestamp_seconds` | gauge | none | Last successful selector-policy evaluation timestamp. Present for file-backed policy. |
 | `bweso_policy_last_reload_success_age_seconds` | gauge | none | Age of the last successful selector-policy evaluation. Present for file-backed policy. |
+| `bweso_auth_policy_reloads_total` | counter | `outcome` | Capability-scoped auth-policy reload cycles: `success`, `unchanged`, or `failure`. |
+| `bweso_auth_policy_active_capabilities` | gauge | none | Count of capabilities in the active scoped-auth policy. |
+| `bweso_auth_policy_active_tokens` | gauge | none | Count of token digests in the active scoped-auth policy. |
+| `bweso_auth_policy_last_reload_success_timestamp_seconds` | gauge | none | Last successful scoped-auth policy evaluation timestamp. |
+| `bweso_auth_policy_last_reload_success_age_seconds` | gauge | none | Age of the last successful scoped-auth policy evaluation. |
 
 <!-- markdownlint-enable MD013 -->
 
@@ -127,6 +132,14 @@ sum(rate(bweso_policy_reloads_total{outcome="failure"}[5m])) > 0
 
 ```promql
 bweso_policy_last_reload_success_age_seconds > 600
+```
+
+```promql
+sum(rate(bweso_auth_policy_reloads_total{outcome="failure"}[5m])) > 0
+```
+
+```promql
+bweso_auth_policy_last_reload_success_age_seconds > 600
 ```
 
 ```promql

@@ -73,6 +73,8 @@ For strict isolation, prefer:
   only for static policy;
 - namespace-local `SecretStore` resources;
 - token-only webhook auth Secrets in workload namespaces;
+- capability-scoped authentication when one provider serves several namespace
+  trust boundaries;
 - no shared `ClusterSecretStore` unless every namespace that can reference it
   may read the allowed items.
 
@@ -80,6 +82,95 @@ Running without any selector policy requires the explicit
 `selectorPolicy.allowAllSelectors=true` Helm value or
 `BWESO_ALLOW_ALL_SELECTORS=true`. Use that only when the provider account is
 already scoped to the same trust boundary.
+
+## Capability-scoped authentication
+
+This feature is available on unreleased `main`. The `v0.4.0` release supports
+the legacy single-token mode only.
+
+Legacy authentication gives one bearer token every selector admitted by the
+global provider policy. Capability-scoped authentication instead loads a JSON
+policy from a Kubernetes Secret. Each capability has its own token set and
+item-key allowlist:
+
+```json
+{
+  "version": 1,
+  "capabilities": [
+    {
+      "name": "app-a",
+      "tokens": [
+        "replace-with-random-token-for-app-a-00000001"
+      ],
+      "allowedKeys": [
+        "id:00000000-0000-0000-0000-000000000001"
+      ],
+      "allowedKeyPrefixes": []
+    }
+  ]
+}
+```
+
+The effective permission is the intersection of two policies:
+
+```text
+request allowed = global selector policy AND matching bearer capability
+```
+
+A capability cannot widen the global policy. A global policy change also cannot
+grant an item to a capability that does not list it. Both layers remain
+item-key scoped; a caller that can select an item can request any property or
+whole-item extraction from it.
+
+Create the auth policy as a Secret, never a ConfigMap. See
+[`../deploy/eso/scoped-auth-policy-secret.example.yaml`](../deploy/eso/scoped-auth-policy-secret.example.yaml)
+for a synthetic example. Configure the chart:
+
+```yaml
+auth:
+  enabled: true
+  scopedPolicy:
+    existingSecret:
+      name: bweso-auth-policy
+      key: auth-policy.json
+    reloadIntervalSeconds: 30
+```
+
+Do not configure the legacy `webhook-token` at the same time. Each workload
+namespace receives only the token for its capability and uses the normal
+namespace-local `SecretStore` example.
+
+Policy rules:
+
+- `version` must be `1`.
+- Capability names and token values must be unique.
+- Each capability needs at least one token and at least one exact key or prefix.
+- Tokens must contain 32–4096 printable ASCII, non-whitespace bytes. Generate random
+  values; do not derive them from capability or namespace names.
+- Multiple tokens in one capability have identical scope. Use this overlap to
+  rotate a token without downtime.
+- The file is limited to 1 MiB, 1,024 capabilities, and 4,096 total tokens.
+- Unknown JSON fields and invalid or empty policy documents are rejected.
+
+The provider hashes tokens during loading, zeroizes the parsed token strings,
+and retains only SHA-256 digests. Each request hashes the supplied token and
+compares it with every configured digest in constant time. Authentication
+failures return a redacted `401`; selector denials return a redacted `403`.
+
+The Secret-mounted file reloads every `reloadIntervalSeconds`. Valid changes
+swap atomically. Invalid updates keep the last known-good policy and increment
+the failure metric. Set the interval to `0` to read only at startup and require
+a provider rollout for changes.
+
+Alert on:
+
+- `sum(rate(bweso_auth_policy_reloads_total{outcome="failure"}[5m])) > 0`
+- `bweso_auth_policy_last_reload_success_age_seconds > 600`
+
+See [ADR 0006](decisions/0006-capability-scoped-auth.md) for the security and
+operational rationale. Tooling can validate policy structure against
+[`auth-policy.schema.json`](auth-policy.schema.json); runtime validation remains
+authoritative for cross-capability uniqueness.
 
 ## Hot Reload
 

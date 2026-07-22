@@ -119,6 +119,47 @@ credential per namespace or trust boundary for strict isolation.
 See [`../selectors-and-policy.md`](../selectors-and-policy.md) for selector
 syntax, property names, policy scope, and ConfigMap-backed hot reload behavior.
 
+## Configure capability-scoped authentication
+
+This feature is available on unreleased `main`. The `v0.4.0` release supports
+one webhook token with the global selector-policy scope.
+
+Use capability-scoped authentication when one provider serves several
+namespace trust boundaries. Create a provider-namespace Secret whose
+`auth-policy.json` key follows the version `1` contract. Each capability lists
+one or more rotating tokens and the exact item IDs that caller may request. The
+example contains placeholders only:
+
+```bash
+kubectl apply -f deploy/eso/scoped-auth-policy-secret.example.yaml
+```
+
+Store real policy material with SOPS, ESO, or your existing Secret-management
+workflow. Never commit real bearer tokens. Then configure the chart:
+
+```yaml
+auth:
+  enabled: true
+  scopedPolicy:
+    existingSecret:
+      name: bweso-auth-policy
+      key: auth-policy.json
+    reloadIntervalSeconds: 30
+```
+
+Do not configure the legacy `webhook-token` in scoped mode. Put only one
+capability's token in each workload namespace's `bweso-webhook-auth` Secret.
+The provider permits a request only when both the matching capability and the
+global `selectorPolicy` allow the key.
+
+To rotate without downtime, add a second token to the same capability, wait for
+`bweso_auth_policy_reloads_total{outcome="success"}` to increase, update the
+workload namespace Secret, verify ESO reconciliation, and remove the old token.
+Invalid policy updates retain the last known-good rules.
+
+See [`../selectors-and-policy.md`](../selectors-and-policy.md) for the complete
+JSON contract, limits, failure behavior, and security model.
+
 ## Configure bounded stale cache
 
 This configuration is available on unreleased `main`; the `v0.4.0` release
@@ -160,14 +201,17 @@ For each namespace or trust boundary:
 - install the provider with a ConfigMap-backed selector policy containing exact
   `id:<item-id>` entries;
 - use a namespace-local `SecretStore`;
-- put only the webhook bearer token in workload namespaces;
+- put only that boundary's webhook bearer token in its workload namespaces;
 - keep the Bitwarden/Vaultwarden client secret and master password in the
   provider namespace;
 - rotate the Bitwarden/Vaultwarden API key, master password, and webhook token
   like other infrastructure credentials, then restart the provider pods and
   force an ESO reconcile;
 - avoid `ClusterSecretStore` unless the store is intentionally shared and every
-  namespace that can reference it may read the allowed items.
+  namespace that can reference it may read the allowed items;
+- when sharing one provider across boundaries, configure a distinct scoped-auth
+  capability for each boundary. Use separate provider accounts and deployments
+  when the provider runtime itself must be isolated.
 
 Create a token-only webhook auth Secret in each namespace that uses a
 namespace-local `SecretStore`:
@@ -175,7 +219,7 @@ namespace-local `SecretStore`:
 ```bash
 kubectl create namespace app
 kubectl -n app create secret generic bweso-webhook-auth \
-  --from-literal=webhook-token='same-webhook-token-as-above'
+  --from-literal=webhook-token='token-for-this-trust-boundary'
 kubectl -n app label secret bweso-webhook-auth \
   external-secrets.io/type=webhook
 ```
@@ -184,10 +228,11 @@ ESO reads this same-namespace Secret to render the authorization header.
 Keeping it token-only avoids copying the Bitwarden/Vaultwarden client secret and
 master password into workload namespaces.
 
-Point ESO at the webhook from the workload namespace. The webhook bearer token
-is a read capability over every selector allowed by provider policy; restrict
-who can read it and who can create or edit `SecretStore` and `ExternalSecret`
-resources.
+Point ESO at the webhook from the workload namespace. In legacy mode, the
+webhook bearer token is a read capability over every selector allowed by the
+global provider policy. In scoped mode, it is limited to the intersection of
+its capability and that global policy. Restrict who can read it and who can
+create or edit `SecretStore` and `ExternalSecret` resources.
 
 ```yaml
 apiVersion: external-secrets.io/v1

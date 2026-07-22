@@ -35,6 +35,9 @@ This project should own:
 - Provider-side selector policy to constrain which raw ESO `remoteRef.key` or
   `dataFrom.extract.key` values a deployment may resolve. This is an item-key
   boundary, not per-property authorization.
+- Capability-scoped bearer authentication for shared provider deployments.
+  Each token scope is intersected with the global selector policy, so neither
+  layer can widen the other.
 - Redacted JSON logs, Prometheus metrics, Kubernetes health probes, and graceful
   shutdown readiness behavior.
 - A small HTTP contract usable by ESO's generic webhook provider.

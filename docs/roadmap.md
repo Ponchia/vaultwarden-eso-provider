@@ -8,6 +8,10 @@ This roadmap records shipped release lines and remaining follow-up work.
   sync for a fixed window after transient upstream failures. Retry throttling
   prevents an ESO request burst from becoming an upstream login burst, and a
   dedicated metric exposes every stale resolve.
+- **Capability-scoped webhook authentication**: a Secret-mounted JSON policy
+  defines independent token sets and selector allowlists. The capability and
+  global selector policies are intersected, tokens are retained only as SHA-256
+  digests, and invalid reloads keep the last known-good policy.
 
 ## v0.4.0
 

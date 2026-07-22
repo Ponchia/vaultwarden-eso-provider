@@ -5,10 +5,8 @@ use std::sync::{
 
 use tokio::sync::Notify;
 
-/// Process lifecycle state. The shutdown channel is a single-consumer latch
-/// (the policy reload task), not a broadcast: `notify_one` stores one permit
-/// so a late waiter still observes shutdown. Adding more consumers would
-/// require `notify_waiters` plus per-waiter ordering handling.
+/// Process lifecycle state. Shutdown is a broadcast to every background task.
+/// The atomic state makes the notification durable for late waiters.
 #[derive(Clone)]
 pub(crate) struct Lifecycle {
     shutting_down: Arc<AtomicBool>,
@@ -27,9 +25,7 @@ impl Default for Lifecycle {
 impl Lifecycle {
     pub(crate) fn mark_shutting_down(&self) {
         self.shutting_down.store(true, Ordering::Release);
-        // `notify_one` stores a permit if no task is waiting yet, so a waiter
-        // that calls `shutdown_requested` later still observes the shutdown.
-        self.shutdown.notify_one();
+        self.shutdown.notify_waiters();
     }
 
     pub(crate) fn is_ready(&self) -> bool {
@@ -39,12 +35,15 @@ impl Lifecycle {
     /// Resolves once shutdown has been requested. Lets background tasks react
     /// promptly instead of only noticing on their next poll interval.
     pub(crate) async fn shutdown_requested(&self) {
-        // Fast path: already shutting down (covers a `mark_shutting_down` that
-        // ran before this future was first awaited).
+        // Register before checking the atomic state. This closes the race where
+        // shutdown begins after the check but before the future starts waiting.
+        let notified = self.shutdown.notified();
+        tokio::pin!(notified);
+        notified.as_mut().enable();
         if !self.is_ready() {
             return;
         }
-        self.shutdown.notified().await;
+        notified.await;
     }
 }
 
@@ -74,5 +73,31 @@ mod tests {
             after_shutdown.is_ok(),
             "shutdown_requested should resolve after shutdown"
         );
+    }
+
+    #[tokio::test]
+    async fn shutdown_wakes_every_registered_consumer() {
+        let lifecycle = Lifecycle::default();
+        let first_lifecycle = lifecycle.clone();
+        let second_lifecycle = lifecycle.clone();
+        let first = tokio::spawn(async move {
+            first_lifecycle.shutdown_requested().await;
+        });
+        let second = tokio::spawn(async move {
+            second_lifecycle.shutdown_requested().await;
+        });
+        tokio::task::yield_now().await;
+
+        lifecycle.mark_shutting_down();
+
+        let joined = tokio::time::timeout(Duration::from_secs(1), async {
+            tokio::join!(first, second)
+        })
+        .await;
+        let Ok((first_result, second_result)) = joined else {
+            unreachable!("all shutdown consumers should wake promptly");
+        };
+        assert!(first_result.is_ok());
+        assert!(second_result.is_ok());
     }
 }

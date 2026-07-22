@@ -10,6 +10,11 @@ before release so generated notes land in the right category.
 
 ## Unreleased
 
+- Added capability-scoped webhook authentication: a Secret-mounted JSON policy
+  can define multiple bearer-token sets with independent exact/prefix selector
+  allowlists. Scoped tokens are intersected with the existing global selector
+  policy, support overlap during rotation, and hot-reload with last-known-good
+  fallback and redacted metrics.
 - Added opt-in bounded stale-cache fallback for transient upstream failures,
   with refresh retry throttling and a dedicated Prometheus counter. The default
   remains fail closed.

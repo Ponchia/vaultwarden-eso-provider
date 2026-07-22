@@ -14,6 +14,9 @@ Recommended order:
   multiline files.
 - `selector-policy-configmap.example.yaml`: hot-reloadable selector policy
   sourced from a ConfigMap (onboard items with no provider restart).
+- `scoped-auth-policy-secret.example.yaml`: provider-side Secret containing
+  multiple bearer-token capabilities with independent selector allowlists
+  (unreleased `main`; not available in `v0.4.0`).
 - `reloader.example.yaml`: Stakater Reloader annotation pattern.
 - `clustersecretstore.warning.example.yaml`: shared store pattern with the
   security warning that should accompany it.
@@ -43,10 +46,13 @@ trusted boundary, front the provider with TLS/mTLS and use that HTTPS URL in the
 Prefer one dedicated Bitwarden/Vaultwarden user and one namespace-local
 `SecretStore` per trust boundary. Namespace-local `SecretStore` resources read
 webhook auth from a same-namespace token Secret such as `bweso-webhook-auth`.
-That bearer token is a read capability over every selector allowed by the
-provider policy, so restrict who can read it and who can create or edit
-`SecretStore` / `ExternalSecret` resources. The provider runtime credentials in
-`bweso-system` should not be reused across namespaces as the ESO auth Secret.
+In legacy mode, that bearer token is a read capability over every selector
+allowed by the global provider policy. For a shared provider, use
+`auth.scopedPolicy` and give each trust boundary a different token whose
+capability contains only its item IDs. Restrict who can read each token and who
+can create or edit `SecretStore` / `ExternalSecret` resources. The provider
+runtime credentials in `bweso-system` should not be reused across namespaces as
+the ESO auth Secret.
 Prefer the Helm chart's ConfigMap-backed selector policy whenever the provider
 credentials can see more vault items than the namespace should read. Inline
 `selectorPolicy.allowedKeys` / `selectorPolicy.allowedKeyPrefixes` remain

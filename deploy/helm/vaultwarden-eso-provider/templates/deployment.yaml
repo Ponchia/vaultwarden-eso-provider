@@ -75,8 +75,15 @@ spec:
             - name: BWESO_MASTER_PASSWORD_FILE
               value: /var/run/secrets/bweso/{{ .Values.credentials.existingSecret.keys.masterPassword }}
             {{- if .Values.auth.enabled }}
+            {{- if .Values.auth.scopedPolicy.existingSecret.name }}
+            - name: BWESO_AUTH_POLICY_FILE
+              value: /var/run/secrets/bweso-auth/{{ .Values.auth.scopedPolicy.existingSecret.key }}
+            - name: BWESO_AUTH_POLICY_RELOAD_INTERVAL_SECONDS
+              value: {{ .Values.auth.scopedPolicy.reloadIntervalSeconds | quote }}
+            {{- else }}
             - name: BWESO_WEBHOOK_AUTH_TOKEN_FILE
               value: /var/run/secrets/bweso/{{ .Values.credentials.existingSecret.keys.webhookToken }}
+            {{- end }}
             {{- else if .Values.auth.insecureAllowUnauthenticated }}
             - name: BWESO_INSECURE_ALLOW_UNAUTHENTICATED
               value: "true"
@@ -153,6 +160,11 @@ spec:
             - name: credentials
               mountPath: /var/run/secrets/bweso
               readOnly: true
+            {{- if .Values.auth.scopedPolicy.existingSecret.name }}
+            - name: auth-policy
+              mountPath: /var/run/secrets/bweso-auth
+              readOnly: true
+            {{- end }}
             {{- if or .Values.caBundle.pem .Values.caBundle.existingSecret.name }}
             - name: ca-bundle
               mountPath: /var/run/secrets/bweso-ca
@@ -168,6 +180,26 @@ spec:
           secret:
             secretName: {{ include "bweso.credentialsSecretName" . }}
             defaultMode: 0400
+            items:
+              - key: {{ .Values.credentials.existingSecret.keys.clientId }}
+                path: {{ .Values.credentials.existingSecret.keys.clientId }}
+              - key: {{ .Values.credentials.existingSecret.keys.clientSecret }}
+                path: {{ .Values.credentials.existingSecret.keys.clientSecret }}
+              - key: {{ .Values.credentials.existingSecret.keys.masterPassword }}
+                path: {{ .Values.credentials.existingSecret.keys.masterPassword }}
+              {{- if and .Values.auth.enabled (not .Values.auth.scopedPolicy.existingSecret.name) }}
+              - key: {{ .Values.credentials.existingSecret.keys.webhookToken }}
+                path: {{ .Values.credentials.existingSecret.keys.webhookToken }}
+              {{- end }}
+        {{- if .Values.auth.scopedPolicy.existingSecret.name }}
+        - name: auth-policy
+          secret:
+            secretName: {{ .Values.auth.scopedPolicy.existingSecret.name }}
+            defaultMode: 0400
+            items:
+              - key: {{ .Values.auth.scopedPolicy.existingSecret.key }}
+                path: {{ .Values.auth.scopedPolicy.existingSecret.key }}
+        {{- end }}
         {{- if .Values.selectorPolicy.configMap.name }}
         - name: selector-policy
           configMap:

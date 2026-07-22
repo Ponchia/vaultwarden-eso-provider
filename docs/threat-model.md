@@ -29,6 +29,7 @@ webhook — are necessary, not optional.
 - Decrypted item field values.
 - Kubernetes Secrets created by External Secrets Operator.
 - Provider logs, metrics, and caches.
+- Webhook bearer tokens and the provider-side scoped-auth policy.
 
 ## Trust Boundaries
 
@@ -71,6 +72,9 @@ webhook — are necessary, not optional.
   return redacted `403` responses for disallowed `remoteRef.key` values.
 - The provider must authenticate `/v1/resolve` before parsing the JSON body and
   must keep request body size bounded.
+- When one provider serves multiple trust boundaries, each bearer capability
+  must have an independent item-key allowlist. Its effective access must be the
+  intersection of that allowlist and the global selector policy.
 - Upstream failures must fail closed by default. An operator-enabled stale
   fallback must be time-bounded, require a previous successful sync, apply only
   to transient upstream failures, and remain observable without vault metadata.
@@ -80,17 +84,20 @@ webhook — are necessary, not optional.
 - Use one dedicated Bitwarden/Vaultwarden user API key per namespace or trust
   boundary.
 - Use namespace-local `SecretStore` resources by default.
-- Put only the webhook bearer token in workload namespaces. Keep client ID,
-  client secret, and master password in the provider namespace or an equivalent
-  runtime secret boundary.
+- Put only the trust boundary's webhook bearer token in each workload
+  namespace. Keep client ID, client secret, master password, and the complete
+  scoped-auth policy in the provider namespace or an equivalent runtime secret
+  boundary.
 - Configure provider-side selector policy when the credential can see more
   vault items than the namespace should consume. Prefer a ConfigMap-backed
   policy (`selectorPolicy.configMap`) with exact `id:` entries for GitOps-managed
   installs; inline `selectorPolicy.allowedKeys` /
   `selectorPolicy.allowedKeyPrefixes` are suitable only for static policy.
-- Treat the webhook bearer token as a read capability over every item selector
-  allowed by provider policy. Restrict who can read the token Secret and who can
-  create or edit `SecretStore` and `ExternalSecret` resources.
+- In legacy single-token mode, treat the webhook bearer token as a read
+  capability over every item selector allowed by the global provider policy.
+  In scoped mode, use a distinct token capability per namespace or trust
+  boundary. Restrict who can read each token Secret and who can create or edit
+  `SecretStore` and `ExternalSecret` resources.
 - Treat provider selector policy as item-key scoped. It does not enforce
   per-property authorization inside an allowed item, so use exact `id:`
   allowlists and separate provider credentials when different namespaces should
@@ -98,6 +105,10 @@ webhook — are necessary, not optional.
 - Treat `ClusterSecretStore` as a deliberate shared trust boundary. Kubernetes
   RBAC can control who may reference it, but the Bitwarden/Vaultwarden account
   and selector policy still define the data that can be read.
+- Use a separate provider account and deployment when compromise of the
+  provider runtime itself must not cross trust boundaries. Scoped tokens limit
+  callers; they do not reduce what the provider's upstream vault credential can
+  decrypt.
 
 ## Unsupported Surfaces In The Current Line
 
