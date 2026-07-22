@@ -65,6 +65,22 @@ spec:
           annotations:
             summary: Vaultwarden ESO Provider selector policy has not reloaded recently
             description: The last successful selector-policy evaluation is older than 10 minutes. Tune this threshold to the configured reload interval.
+        - alert: VaultwardenEsoAuthPolicyReloadFailures
+          expr: sum(rate(bweso_auth_policy_reloads_total{outcome="failure"}[5m])) > 0
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: Vaultwarden ESO Provider auth policy reloads are failing
+            description: The token-scoped auth policy cannot be reloaded; the provider keeps the last known-good capability set.
+        - alert: VaultwardenEsoAuthPolicyReloadStale
+          expr: bweso_auth_policy_last_reload_success_age_seconds > 600
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: Vaultwarden ESO Provider auth policy has not reloaded recently
+            description: The last successful token-scoped auth-policy evaluation is older than 10 minutes. Tune this threshold to the configured reload interval.
         - alert: VaultwardenEsoResolveLatencyHigh
           expr: histogram_quantile(0.95, sum(rate(bweso_resolve_duration_seconds_bucket[5m])) by (le)) > 5
           for: 10m

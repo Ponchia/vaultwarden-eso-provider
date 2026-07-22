@@ -100,11 +100,10 @@ Add **optional file-backed policy sources that are re-read at runtime**:
   `metadata()`-then-`read` is a benign TOCTOU: a ConfigMap projection is
   an atomic `..data` symlink swap, so no torn read, and every generation
   is bounded by the Kubernetes ConfigMap limit far under the cap.
-- The reload task is a single dedicated consumer of the `Lifecycle`
-  shutdown latch (`notify_one` + an `is_ready()` fast-path and a
-  post-select backstop). It is intentionally not a broadcast primitive;
-  adding more consumers would need `notify_waiters` plus its own
-  ordering handling.
+- `Lifecycle` broadcasts shutdown to all background tasks and pairs
+  `notify_waiters` with an atomic state check registered in race-safe order.
+  This supports both selector-policy and scoped-auth reload tasks while keeping
+  shutdown durable for late waiters.
 - Reload is observable: `bweso_policy_reloads_total` by outcome, active
   key/prefix counts, and last-success timestamp/age — counts only, never
   the selector keys, preserving redaction.

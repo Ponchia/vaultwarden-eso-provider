@@ -14,7 +14,10 @@ The default chart shape is intentionally small:
 - Startup, liveness, and readiness probes enabled by default.
 - Prometheus metrics exposed by the pod, with optional `ServiceMonitor`
   rendering when Prometheus Operator CRDs are installed.
-- Webhook bearer-token authentication enabled by default.
+- Webhook bearer-token authentication enabled by default. The legacy mode uses
+  one token for the global selector-policy scope. Shared deployments can use
+  `auth.scopedPolicy` to mount multiple independently scoped capabilities from
+  a Kubernetes Secret.
 - Provider-side selector policy with exact `remoteRef.key` allowlists and prefix
   allowlists. Production GitOps installs should source policy from a
   hot-reloadable ConfigMap (`selectorPolicy.configMap`) so onboarding needs no
@@ -31,6 +34,9 @@ The default chart shape is intentionally small:
 - Optional `hostAliases` rendering for private DNS, split-horizon DNS, or
   in-cluster ingress paths that must preserve the Bitwarden/Vaultwarden
   hostname for TLS and HTTP host routing.
+
+Capability-scoped authentication is available on unreleased `main`. The
+`v0.4.0` chart supports the legacy single-token mode only.
 
 Render it locally with non-secret lint values:
 
