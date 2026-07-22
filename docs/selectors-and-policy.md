@@ -40,6 +40,12 @@ Prefer `field.<key>` for migrated Kubernetes Secret keys. Plain `username` and
 `password` select Bitwarden login fields; `field.username` and
 `field.password` select custom fields with those names.
 
+Whole-item extraction rejects duplicate output keys with
+`409 ambiguous_document`. For example, an item cannot expose both a login
+`password` and a custom field named `password` in the same whole-item document.
+Single-property selectors remain unambiguous: use `password` for the login
+field or `field.password` for the custom field.
+
 Attachment properties fail with `unsupported_attachment`. Shared organization
 items fail with `unsupported_shared_item` until organization-key decryption is
 implemented and live-tested.

@@ -109,8 +109,12 @@ webhook — are necessary, not optional.
   the chart. Front the Service with a mesh, ingress, or gateway if pod-network
   traffic is not a trusted boundary.
 - `/v1/resolve` has no per-source rate limiting. Bearer-token auth, the
-  16 KiB body cap, a global concurrency cap, and single-flight cache refresh are
-  the built-in mitigations.
+  16 KiB body cap, 10-second body-read timeout, a global concurrency cap, and
+  single-flight cache refresh are the built-in mitigations. Request bodies are
+  authenticated and decoded before taking a resolve-concurrency permit.
+- Successful Bitwarden-compatible JSON responses are capped at 32 MiB before
+  deserialization. The HTTP client also enforces connect and whole-request
+  timeouts.
 
 ## Open Questions
 

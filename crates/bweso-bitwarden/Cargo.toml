@@ -1,6 +1,6 @@
 [package]
 name = "bweso-bitwarden"
-version = "0.3.0"
+version = "0.4.0"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -25,13 +25,13 @@ pbkdf2.workspace = true
 reqwest.workspace = true
 secrecy.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 sha2.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 url.workspace = true
-bweso-core = { version = "0.3.0", path = "../bweso-core" }
+bweso-core = { version = "0.4.0", path = "../bweso-core" }
 zeroize.workspace = true
 
 [dev-dependencies]
 axum.workspace = true
-serde_json.workspace = true

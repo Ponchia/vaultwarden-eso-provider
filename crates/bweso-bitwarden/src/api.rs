@@ -14,7 +14,7 @@ use reqwest::{Client as HttpClient, Url};
 use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 
 use crate::{
     AuthenticatedSymmetricKey, BitwardenAuth, BitwardenClientError, BitwardenEndpoint,
@@ -28,6 +28,7 @@ const DEFAULT_CACHE_TTL: Duration = Duration::from_secs(60);
 const DEFAULT_HTTP_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 const DEFAULT_HTTP_REQUEST_TIMEOUT: Duration = Duration::from_secs(25);
 const TOKEN_EXPIRY_REFRESH_SKEW: Duration = Duration::from_secs(30);
+const MAX_UPSTREAM_RESPONSE_BYTES: usize = 32 * 1024 * 1024;
 
 /// Bitwarden-compatible HTTP API client.
 #[derive(Clone)]
@@ -37,7 +38,7 @@ pub struct BitwardenApiClient {
     http: HttpClient,
     device: BitwardenDevice,
     cache_config: BitwardenCacheConfig,
-    cache: Arc<Mutex<Option<CachedVault>>>,
+    cache: Arc<RwLock<Option<CachedVault>>>,
     refresh_lock: Arc<Mutex<()>>,
     metrics: Arc<CacheMetricState>,
 }
@@ -77,7 +78,7 @@ impl BitwardenApiClient {
             http,
             device,
             cache_config,
-            cache: Arc::new(Mutex::new(None)),
+            cache: Arc::new(RwLock::new(None)),
             refresh_lock: Arc::new(Mutex::new(())),
             metrics: Arc::new(CacheMetricState::default()),
         })
@@ -193,7 +194,7 @@ impl BitwardenApiClient {
     ) -> Result<SecretDocument, BitwardenClientError> {
         self.ensure_fresh_cached_sync().await?;
 
-        let cache = self.cache.lock().await;
+        let cache = self.cache.read().await;
         let cached = cache.as_ref().ok_or(BitwardenApiError::MissingCachedSync)?;
         let cipher =
             Self::resolve_synced_cipher(&cached.sync, &cached.session.user_key, &selector.key)?;
@@ -240,14 +241,14 @@ impl BitwardenApiClient {
                 return Err(error);
             }
         };
-        let mut cache = self.cache.lock().await;
+        let mut cache = self.cache.write().await;
         *cache = Some(refreshed);
         Ok(())
     }
 
     async fn has_fresh_cache(&self) -> bool {
         self.cache
-            .lock()
+            .read()
             .await
             .as_ref()
             .is_some_and(|cached| cached.is_fresh(self.cache_config.ttl))
@@ -809,7 +810,30 @@ where
         });
     }
 
-    Ok(response.json::<T>().await?)
+    decode_json_body(response, endpoint, MAX_UPSTREAM_RESPONSE_BYTES).await
+}
+
+async fn decode_json_body<T>(
+    mut response: reqwest::Response,
+    endpoint: &'static str,
+    limit: usize,
+) -> Result<T, BitwardenApiError>
+where
+    T: for<'de> Deserialize<'de>,
+{
+    let mut body = Vec::new();
+    while let Some(chunk) = response.chunk().await? {
+        let Some(next_len) = body.len().checked_add(chunk.len()) else {
+            return Err(BitwardenApiError::ResponseTooLarge { endpoint, limit });
+        };
+        if next_len > limit {
+            return Err(BitwardenApiError::ResponseTooLarge { endpoint, limit });
+        }
+        body.extend_from_slice(&chunk);
+    }
+
+    serde_json::from_slice(&body)
+        .map_err(|source| BitwardenApiError::InvalidJson { endpoint, source })
 }
 
 trait BitwardenRequestHeaders {
@@ -838,6 +862,23 @@ pub enum BitwardenApiError {
         endpoint: &'static str,
         /// HTTP status code.
         status: u16,
+    },
+    /// A successful response exceeded the configured safety limit.
+    #[error("Bitwarden-compatible {endpoint} response exceeded {limit} bytes")]
+    ResponseTooLarge {
+        /// Logical endpoint name.
+        endpoint: &'static str,
+        /// Maximum accepted body size.
+        limit: usize,
+    },
+    /// A successful response body was not valid JSON.
+    #[error("Bitwarden-compatible {endpoint} response was not valid JSON")]
+    InvalidJson {
+        /// Logical endpoint name.
+        endpoint: &'static str,
+        /// JSON decoding error.
+        #[source]
+        source: serde_json::Error,
     },
     /// KDF type is unknown.
     #[error("unsupported Bitwarden-compatible KDF type {kdf_type}")]
@@ -1057,6 +1098,35 @@ frW69DSxg6/fcNRyvdTH+twvVnzH
             client.prelogin("User@Example.COM").await?,
             KdfConfig::Pbkdf2Sha256 { iterations: 5_000 }
         );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn rejects_oversized_success_response_before_json_decode() -> TestResult {
+        let app = Router::new().route("/", get(|| async { "0123456789" }));
+        let listener = TcpListener::bind("127.0.0.1:0").await?;
+        let address = listener.local_addr()?;
+        tokio::spawn(async move {
+            if let Err(error) = axum::serve(listener, app).await {
+                eprintln!("oversized response test server failed: {error}");
+            }
+        });
+
+        let response = reqwest::Client::new()
+            .get(format!("http://{address}/"))
+            .send()
+            .await?;
+        let Err(error) = decode_json_body::<serde_json::Value>(response, "test", 8).await else {
+            unreachable!("response should exceed the test limit");
+        };
+
+        assert!(matches!(
+            error,
+            BitwardenApiError::ResponseTooLarge {
+                endpoint: "test",
+                limit: 8
+            }
+        ));
         Ok(())
     }
 
