@@ -44,3 +44,8 @@ cargo tree
   passwords, or derived keys.
 - Deletion, rollout, and namespace-scoped behavior must be explicit in the
   Kubernetes-facing API.
+
+## House check
+
+Run `repo-instruction-audit --repo .` after changing agent instructions or
+documentation routing.
