@@ -30,7 +30,7 @@ panic = "deny"
 anyhow = "1.0"
 async-trait = "0.1"
 aes = "0.9"
-argon2 = { version = "0.5", features = ["alloc", "zeroize", "std"], default-features = false }
+argon2 = { version = "0.6", features = ["alloc", "zeroize", "std"], default-features = false }
 axum = { version = "0.8", features = ["macros"] }
 base64 = "0.22"
 cbc = { version = "0.2", features = ["block-padding"] }
