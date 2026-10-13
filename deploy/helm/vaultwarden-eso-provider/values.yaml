@@ -50,6 +50,9 @@ config:
   # Or set both identityUrl and apiUrl for Bitwarden Cloud/split endpoints.
   identityUrl: ""
   apiUrl: ""
+  # Maximum accepted Argon2 account memory cost. Increase the pod memory
+  # limit with this value, retaining headroom for HTTP and cached vault data.
+  argon2MemoryLimitMiB: 64
   cacheTtlSeconds: 60
   # Additional time beyond cacheTtlSeconds during which a previous successful
   # sync can be served after transport errors, HTTP 408/429, or HTTP 5xx.
@@ -192,7 +195,7 @@ resources:
     ephemeral-storage: 16Mi
   limits:
     cpu: 250m
-    memory: 128Mi
+    memory: 256Mi
     ephemeral-storage: 64Mi
 
 nodeSelector: {}

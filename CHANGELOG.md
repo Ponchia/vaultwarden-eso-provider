@@ -8,6 +8,21 @@ Release notes are generated from merged pull requests using
 [`.github/release.yml`](.github/release.yml). Maintainers should label PRs
 before release so generated notes land in the right category.
 
+## Unreleased hardening
+
+- Correct Password Manager Argon2 salt preprocessing with independently
+  generated interoperability vectors; the published v0.4.0 path is affected.
+- Move KDF work off async workers and enforce an operator Argon2 memory budget.
+- Return 422 for a missing property; reserve 404 for actual item absence.
+- Reject malformed sync responses without a ciphers array instead of treating
+  them as an empty vault, and exclude soft-deleted items from lookup.
+- Propagate name-lookup decryption failures rather than report false absence.
+- Reject duplicate single-property custom fields; wipe owned plaintext models
+  and temporary unlock buffers on drop.
+- Bound policy-file reads directly instead of relying on a preceding stat.
+- Increase default pod memory to 256 MiB and ESO example timeouts to 90 seconds.
+
+
 ## Unreleased
 
 - Added capability-scoped webhook authentication: a Secret-mounted JSON policy

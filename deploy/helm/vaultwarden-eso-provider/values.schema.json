@@ -4,7 +4,10 @@
   "additionalProperties": false,
   "properties": {
     "replicaCount": {
-      "type": ["integer", "string"],
+      "type": [
+        "integer",
+        "string"
+      ],
       "pattern": "^[0-9]+$",
       "minimum": 0
     },
@@ -17,7 +20,11 @@
         },
         "pullPolicy": {
           "type": "string",
-          "enum": ["Always", "IfNotPresent", "Never"]
+          "enum": [
+            "Always",
+            "IfNotPresent",
+            "Never"
+          ]
         },
         "tag": {
           "type": "string"
@@ -67,7 +74,10 @@
       "type": "string"
     },
     "terminationGracePeriodSeconds": {
-      "type": ["integer", "string"],
+      "type": [
+        "integer",
+        "string"
+      ],
       "pattern": "^[1-9][0-9]*$",
       "minimum": 1
     },
@@ -85,7 +95,10 @@
           "type": "string"
         },
         "port": {
-          "type": ["integer", "string"],
+          "type": [
+            "integer",
+            "string"
+          ],
           "pattern": "^[1-9][0-9]*$",
           "minimum": 1,
           "maximum": 65535
@@ -109,27 +122,42 @@
           "type": "string"
         },
         "cacheTtlSeconds": {
-          "type": ["integer", "string"],
+          "type": [
+            "integer",
+            "string"
+          ],
           "pattern": "^[0-9]+$",
           "minimum": 0
         },
         "cacheStaleIfErrorSeconds": {
-          "type": ["integer", "string"],
+          "type": [
+            "integer",
+            "string"
+          ],
           "pattern": "^[0-9]+$",
           "minimum": 0
         },
         "cacheRefreshRetryIntervalSeconds": {
-          "type": ["integer", "string"],
+          "type": [
+            "integer",
+            "string"
+          ],
           "pattern": "^[0-9]+$",
           "minimum": 0
         },
         "httpConnectTimeoutSeconds": {
-          "type": ["integer", "string"],
+          "type": [
+            "integer",
+            "string"
+          ],
           "pattern": "^[1-9][0-9]*$",
           "minimum": 1
         },
         "httpRequestTimeoutSeconds": {
-          "type": ["integer", "string"],
+          "type": [
+            "integer",
+            "string"
+          ],
           "pattern": "^[1-9][0-9]*$",
           "minimum": 1
         },
@@ -140,7 +168,10 @@
           "type": "string"
         },
         "deviceType": {
-          "type": ["integer", "string"],
+          "type": [
+            "integer",
+            "string"
+          ],
           "pattern": "^[0-9]+$",
           "minimum": 0,
           "maximum": 255
@@ -148,6 +179,11 @@
         "resolveConcurrencyLimit": {
           "type": "integer",
           "minimum": 0
+        },
+        "argon2MemoryLimitMiB": {
+          "type": "integer",
+          "minimum": 16,
+          "maximum": 1024
         }
       }
     },
@@ -240,7 +276,10 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["ip", "hostnames"],
+        "required": [
+          "ip",
+          "hostnames"
+        ],
         "properties": {
           "ip": {
             "type": "string",
@@ -317,8 +356,13 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "name": { "type": "string" },
-            "key": { "type": "string", "minLength": 1 }
+            "name": {
+              "type": "string"
+            },
+            "key": {
+              "type": "string",
+              "minLength": 1
+            }
           }
         }
       }

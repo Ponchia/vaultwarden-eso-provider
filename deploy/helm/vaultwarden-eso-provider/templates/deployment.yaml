@@ -104,6 +104,8 @@ spec:
               value: {{ .Values.config.deviceName | quote }}
             - name: BWESO_DEVICE_TYPE
               value: {{ .Values.config.deviceType | quote }}
+            - name: BWESO_ARGON2_MEMORY_LIMIT_MIB
+              value: {{ .Values.config.argon2MemoryLimitMiB | quote }}
             - name: BWESO_RESOLVE_CONCURRENCY_LIMIT
               value: {{ .Values.config.resolveConcurrencyLimit | quote }}
             {{- if .Values.selectorPolicy.allowedKeys }}

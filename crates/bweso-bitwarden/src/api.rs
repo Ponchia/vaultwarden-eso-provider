@@ -14,7 +14,8 @@ use reqwest::{Client as HttpClient, Url};
 use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::{Mutex, RwLock, Semaphore};
+use zeroize::{Zeroize, Zeroizing};
 
 use crate::{
     AuthenticatedSymmetricKey, BitwardenAuth, BitwardenClientError, BitwardenEndpoint,
@@ -30,6 +31,7 @@ const DEFAULT_HTTP_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 const DEFAULT_HTTP_REQUEST_TIMEOUT: Duration = Duration::from_secs(25);
 const TOKEN_EXPIRY_REFRESH_SKEW: Duration = Duration::from_secs(30);
 const MAX_UPSTREAM_RESPONSE_BYTES: usize = 32 * 1024 * 1024;
+const DEFAULT_ARGON2_MEMORY_LIMIT_MIB: u32 = 64;
 
 /// Bitwarden-compatible HTTP API client.
 #[derive(Clone)]
@@ -41,6 +43,8 @@ pub struct BitwardenApiClient {
     cache_config: BitwardenCacheConfig,
     cache: Arc<RwLock<Option<CachedVault>>>,
     refresh_lock: Arc<Mutex<()>>,
+    unlock_semaphore: Arc<Semaphore>,
+    argon2_memory_limit_mib: u32,
     metrics: Arc<CacheMetricState>,
 }
 
@@ -61,7 +65,11 @@ impl BitwardenApiClient {
             device,
             cache_config,
             http_config,
+            argon2_memory_limit_mib,
         } = options;
+        if !(16..=1024).contains(&argon2_memory_limit_mib) {
+            return Err(BitwardenApiError::InvalidKdfMemoryLimit);
+        }
 
         let mut builder = HttpClient::builder()
             .user_agent("vaultwarden-eso-provider")
@@ -81,6 +89,8 @@ impl BitwardenApiClient {
             cache_config,
             cache: Arc::new(RwLock::new(None)),
             refresh_lock: Arc::new(Mutex::new(())),
+            unlock_semaphore: Arc::new(Semaphore::new(1)),
+            argon2_memory_limit_mib,
             metrics: Arc::new(CacheMetricState::default()),
         })
     }
@@ -142,7 +152,23 @@ impl BitwardenApiClient {
             .map_err(BitwardenApiError::from)?;
         let response = decode_json::<TokenResponse>(response, "token").await?;
 
-        self.unlock_session(response)
+        // KDF work is CPU/memory intensive. Keep it off async workers and
+        // retain the permit inside the blocking task even if a caller is
+        // cancelled: spawn_blocking tasks cannot be aborted once running.
+        let permit = self
+            .unlock_semaphore
+            .clone()
+            .acquire_owned()
+            .await
+            .map_err(|_| BitwardenApiError::UnlockTaskFailed)?;
+        let password = self.auth.master_password.clone();
+        let memory_limit = self.argon2_memory_limit_mib;
+        tokio::task::spawn_blocking(move || {
+            let _permit = permit;
+            Self::unlock_session(response, password.expose_secret(), memory_limit)
+        })
+        .await
+        .map_err(|_| BitwardenApiError::UnlockTaskFailed)?
     }
 
     /// Fetch a full vault sync response with an authenticated session.
@@ -171,20 +197,35 @@ impl BitwardenApiClient {
     }
 
     fn unlock_session(
-        &self,
-        response: TokenResponse,
+        mut response: TokenResponse,
+        master_password: &str,
+        argon2_memory_limit_mib: u32,
     ) -> Result<BitwardenSession, BitwardenClientError> {
         let unlock = response
             .user_decryption_options
+            .take()
             .and_then(|options| options.master_password_unlock)
             .ok_or(BitwardenApiError::MissingMasterPasswordUnlock)?;
         let unlock_data = MasterPasswordUnlockData::try_from(unlock)?;
-        let user_key = unlock_data.unlock_user_key(self.auth.master_password.expose_secret())?;
+        if let KdfConfig::Argon2id { memory_mib, .. } = &unlock_data.kdf {
+            if *memory_mib > argon2_memory_limit_mib {
+                return Err(crate::KeyDerivationError::KdfTooExpensive {
+                    parameter: "argon2_memory_mib",
+                    actual: *memory_mib,
+                    maximum: argon2_memory_limit_mib,
+                }
+                .into());
+            }
+        }
+        let user_key = unlock_data.unlock_user_key(master_password)?;
 
         Ok(BitwardenSession {
-            access_token: response.access_token.into(),
+            access_token: std::mem::take(&mut response.access_token).into(),
             expires_in: response.expires_in,
-            token_type: response.token_type.unwrap_or_else(|| "Bearer".to_string()),
+            token_type: response
+                .token_type
+                .take()
+                .unwrap_or_else(|| "Bearer".to_string()),
             user_key,
         })
     }
@@ -325,7 +366,7 @@ impl BitwardenApiClient {
     ) -> Result<&'a EncryptedCipher, BitwardenApiError> {
         sync.ciphers
             .iter()
-            .find(|cipher| cipher.id == id)
+            .find(|cipher| cipher.id == id && cipher.deleted_date.is_none())
             .ok_or(BitwardenApiError::CipherNotFound)
     }
 
@@ -336,21 +377,33 @@ impl BitwardenApiClient {
     ) -> Result<DecryptedCipher, BitwardenClientError> {
         let mut name_match = None;
 
+        let mut has_shared_items = false;
         for cipher in &sync.ciphers {
-            if let Ok(decrypted) = cipher.decrypt(user_key) {
-                if decrypted.name.as_deref() == Some(name) {
-                    if cipher.organization_id.is_some() {
-                        return Err(BitwardenApiError::UnsupportedSharedItem.into());
-                    }
-                    if name_match.is_some() {
-                        return Err(BitwardenApiError::AmbiguousCipherName.into());
-                    }
-                    name_match = Some(decrypted);
+            if cipher.deleted_date.is_some() {
+                continue;
+            }
+            if cipher.organization_id.is_some() {
+                has_shared_items = true;
+                continue;
+            }
+            // Never turn a decryption failure into absence: ESO interprets
+            // absence as a deletion signal. Exact id selectors avoid a scan.
+            let decrypted = cipher.decrypt(user_key)?;
+            if decrypted.name.as_deref() == Some(name) {
+                if name_match.is_some() {
+                    return Err(BitwardenApiError::AmbiguousCipherName.into());
                 }
+                name_match = Some(decrypted);
             }
         }
 
-        name_match.ok_or_else(|| BitwardenApiError::CipherNotFound.into())
+        name_match.ok_or_else(|| {
+            if has_shared_items {
+                BitwardenApiError::UnsupportedSharedItem.into()
+            } else {
+                BitwardenApiError::CipherNotFound.into()
+            }
+        })
     }
 
     fn endpoint_url(base_url: &Url, segments: &[&str]) -> Result<Url, BitwardenApiError> {
@@ -419,6 +472,9 @@ pub struct BitwardenApiClientOptions {
     pub cache_config: BitwardenCacheConfig,
     /// HTTP transport timeouts.
     pub http_config: BitwardenHttpConfig,
+    /// Operator memory budget for Argon2id, in MiB (16..=1024; default 64).
+    /// Accounts exceeding it fail before allocation; increase pod memory too.
+    pub argon2_memory_limit_mib: u32,
 }
 
 impl BitwardenApiClientOptions {
@@ -431,6 +487,7 @@ impl BitwardenApiClientOptions {
             device: BitwardenDevice::default(),
             cache_config: BitwardenCacheConfig::default(),
             http_config: BitwardenHttpConfig::default(),
+            argon2_memory_limit_mib: DEFAULT_ARGON2_MEMORY_LIMIT_MIB,
         }
     }
 
@@ -443,6 +500,7 @@ impl BitwardenApiClientOptions {
             device: BitwardenDevice::default(),
             cache_config: BitwardenCacheConfig::default(),
             http_config: BitwardenHttpConfig::default(),
+            argon2_memory_limit_mib: DEFAULT_ARGON2_MEMORY_LIMIT_MIB,
         }
     }
 
@@ -708,7 +766,7 @@ pub struct BitwardenSession {
 #[serde(rename_all = "camelCase")]
 pub struct SyncResponse {
     /// Vault ciphers visible to the authenticated user.
-    #[serde(default, alias = "Ciphers")]
+    #[serde(alias = "Ciphers")]
     pub ciphers: Vec<EncryptedCipher>,
 }
 
@@ -776,6 +834,12 @@ struct TokenResponse {
         alias = "UserDecryptionOptions"
     )]
     user_decryption_options: Option<UserDecryptionOptionsResponse>,
+}
+
+impl Drop for TokenResponse {
+    fn drop(&mut self) {
+        self.access_token.zeroize();
+    }
 }
 
 #[derive(Deserialize)]
@@ -897,7 +961,9 @@ async fn decode_json_body<T>(
 where
     T: for<'de> Deserialize<'de>,
 {
-    let mut body = Vec::new();
+    // Token responses contain bearer credentials. Wipe the collected copy on
+    // every exit, including JSON errors and oversized response failures.
+    let mut body = Zeroizing::new(Vec::new());
     while let Some(chunk) = response.chunk().await? {
         let Some(next_len) = body.len().checked_add(chunk.len()) else {
             return Err(BitwardenApiError::ResponseTooLarge { endpoint, limit });
@@ -925,6 +991,12 @@ impl BitwardenRequestHeaders for reqwest::RequestBuilder {
 /// Bitwarden-compatible API errors.
 #[derive(Debug, Error)]
 pub enum BitwardenApiError {
+    /// The operator configured an invalid Argon2 allocation budget.
+    #[error("Argon2 memory limit must be between 16 and 1024 MiB")]
+    InvalidKdfMemoryLimit,
+    /// A bounded blocking unlock task could not complete.
+    #[error("vault unlock worker could not complete")]
+    UnlockTaskFailed,
     /// HTTP client error.
     #[error(transparent)]
     Http(#[from] reqwest::Error),
@@ -2058,5 +2130,64 @@ frW69DSxg6/fcNRyvdTH+twvVnzH
             token_type: "Bearer".to_string(),
             user_key: AuthenticatedSymmetricKey::from_base64(KEY_B64)?,
         })
+    }
+    #[test]
+    fn missing_ciphers_is_invalid_not_an_empty_vault() {
+        assert!(serde_json::from_str::<SyncResponse>("{}").is_err());
+        assert!(serde_json::from_str::<SyncResponse>(r#"{"ciphers":null}"#).is_err());
+        assert!(serde_json::from_str::<SyncResponse>(r#"{"ciphers":[]}"#).is_ok());
+    }
+
+    #[test]
+    fn deleted_items_are_not_resolved() -> TestResult {
+        let mut item: serde_json::Value = serde_json::from_str(LOGIN_CIPHER_JSON)?;
+        item["deletedDate"] = json!("2026-10-13T00:00:00Z");
+        let sync: SyncResponse = serde_json::from_value(json!({"ciphers": [item]}))?;
+        assert!(matches!(
+            BitwardenApiClient::find_cipher_by_id(&sync, "cipher-login"),
+            Err(BitwardenApiError::CipherNotFound)
+        ));
+        let key = AuthenticatedSymmetricKey::from_base64(KEY_B64)?;
+        assert!(matches!(
+            BitwardenApiClient::resolve_synced_cipher_by_name(&sync, &key, "app/database"),
+            Err(BitwardenClientError::Api(BitwardenApiError::CipherNotFound))
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn corrupt_name_lookup_is_not_a_deletion_signal() -> TestResult {
+        let mut item: serde_json::Value = serde_json::from_str(LOGIN_CIPHER_JSON)?;
+        item["name"] = json!("corrupted-encrypted-name");
+        let sync: SyncResponse = serde_json::from_value(json!({"ciphers": [item]}))?;
+        let key = AuthenticatedSymmetricKey::from_base64(KEY_B64)?;
+        assert!(matches!(
+            BitwardenApiClient::resolve_synced_cipher_by_name(&sync, &key, "app/database"),
+            Err(BitwardenClientError::Cipher(_))
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn unlock_rejects_account_memory_above_operator_budget_before_decryption() -> TestResult {
+        let response: TokenResponse = serde_json::from_value(json!({
+            "access_token":"fixture-token",
+            "userDecryptionOptions":{"masterPasswordUnlock":{
+                "salt":"fixture@example.test",
+                "kdf":{"kdfType":1,"iterations":2,"memory":128,"parallelism":1},
+                "masterKeyWrappedUserKey":"intentionally-invalid-not-decrypted"
+            }}
+        }))?;
+        assert!(matches!(
+            BitwardenApiClient::unlock_session(response, PASSWORD, 64),
+            Err(BitwardenClientError::KeyDerivation(
+                crate::KeyDerivationError::KdfTooExpensive {
+                    actual: 128,
+                    maximum: 64,
+                    ..
+                }
+            ))
+        ));
+        Ok(())
     }
 }

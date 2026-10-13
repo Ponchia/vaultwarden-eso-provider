@@ -5,7 +5,7 @@ use std::fmt;
 use bweso_core::SecretDocument;
 use serde::Deserialize;
 use thiserror::Error;
-use zeroize::Zeroize;
+use zeroize::{Zeroize, Zeroizing};
 
 use crate::crypto::{AuthenticatedSymmetricKey, CryptoError, EncryptedString};
 
@@ -21,7 +21,10 @@ pub struct EncryptedCipher {
     /// Optional organization identifier.
     #[serde(default)]
     pub organization_id: Option<String>,
-    /// Optional per-cipher key. Decryption of this key is a later milestone.
+    /// Soft-deleted/trash items must not remain usable as source secrets.
+    #[serde(default)]
+    pub deleted_date: Option<String>,
+    /// Optional per-cipher key, wrapped by the user key.
     #[serde(default)]
     pub key: Option<String>,
     /// Encrypted item name.
@@ -71,9 +74,8 @@ impl EncryptedCipher {
     pub fn decrypt(&self, key: &AuthenticatedSymmetricKey) -> Result<DecryptedCipher, CipherError> {
         let cipher_key;
         let decryption_key = if let Some(wrapped_key) = self.key.as_deref() {
-            let mut plain = wrapped_key.parse::<EncryptedString>()?.decrypt_bytes(key)?;
+            let plain = Zeroizing::new(wrapped_key.parse::<EncryptedString>()?.decrypt_bytes(key)?);
             let parsed_key = AuthenticatedSymmetricKey::try_from(plain.as_slice())?;
-            plain.zeroize();
             cipher_key = parsed_key;
             &cipher_key
         } else {
@@ -207,6 +209,13 @@ pub struct DecryptedCipher {
     pub ssh_key: Option<DecryptedSshKey>,
 }
 
+impl Drop for DecryptedCipher {
+    fn drop(&mut self) {
+        self.name.zeroize();
+        self.notes.zeroize();
+    }
+}
+
 impl fmt::Debug for DecryptedCipher {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
@@ -299,9 +308,17 @@ impl DecryptedCipher {
             .or_else(|| property.strip_prefix("custom."))
             .unwrap_or(property);
 
-        self.fields
+        let mut matches = self
+            .fields
             .iter()
-            .find(|field| field.name.as_deref() == Some(custom_name))
+            .filter(|field| field.name.as_deref() == Some(custom_name));
+        let selected = matches.next();
+        if matches.next().is_some() {
+            return Err(CipherError::DuplicateDocumentField {
+                field: custom_name.to_string(),
+            });
+        }
+        selected
             .and_then(|field| field.value.clone())
             .ok_or_else(|| CipherError::MissingProperty {
                 property: property.to_string(),
@@ -369,6 +386,13 @@ pub struct DecryptedField {
     pub field_type: Option<u8>,
 }
 
+impl Drop for DecryptedField {
+    fn drop(&mut self) {
+        self.name.zeroize();
+        self.value.zeroize();
+    }
+}
+
 impl fmt::Debug for DecryptedField {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
@@ -391,6 +415,14 @@ pub struct DecryptedLogin {
     pub totp: Option<String>,
 }
 
+impl Drop for DecryptedLogin {
+    fn drop(&mut self) {
+        self.username.zeroize();
+        self.password.zeroize();
+        self.totp.zeroize();
+    }
+}
+
 impl fmt::Debug for DecryptedLogin {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
@@ -411,6 +443,14 @@ pub struct DecryptedSshKey {
     pub public_key: Option<String>,
     /// Decrypted key fingerprint.
     pub key_fingerprint: Option<String>,
+}
+
+impl Drop for DecryptedSshKey {
+    fn drop(&mut self) {
+        self.private_key.zeroize();
+        self.public_key.zeroize();
+        self.key_fingerprint.zeroize();
+    }
 }
 
 impl fmt::Debug for DecryptedSshKey {
@@ -624,6 +664,7 @@ mod tests {
     #[test]
     fn encrypted_cipher_debug_redacts_source_values() {
         let cipher = EncryptedCipher {
+            deleted_date: None,
             id: "cipher-id-secret".to_string(),
             cipher_type: 1,
             organization_id: Some("organization-id-secret".to_string()),
@@ -880,4 +921,37 @@ mod tests {
   }
 }
 "#;
+    #[test]
+    fn duplicate_custom_property_is_ambiguous() -> Result<(), Box<dyn std::error::Error>> {
+        let cipher = DecryptedCipher {
+            id: "fixture-id".to_string(),
+            cipher_type: 2,
+            organization_id: None,
+            name: None,
+            notes: None,
+            login: None,
+            ssh_key: None,
+            fields: vec![
+                DecryptedField {
+                    name: Some("duplicate".to_string()),
+                    value: Some("first".to_string()),
+                    field_type: Some(1),
+                },
+                DecryptedField {
+                    name: Some("duplicate".to_string()),
+                    value: Some("second".to_string()),
+                    field_type: Some(1),
+                },
+            ],
+        };
+        assert!(matches!(
+            cipher.extract_property("field.duplicate"),
+            Err(CipherError::DuplicateDocumentField { .. })
+        ));
+        assert!(matches!(
+            cipher.to_secret_document(),
+            Err(CipherError::DuplicateDocumentField { .. })
+        ));
+        Ok(())
+    }
 }

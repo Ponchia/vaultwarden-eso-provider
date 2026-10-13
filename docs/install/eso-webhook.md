@@ -262,7 +262,7 @@ spec:
         }
       result:
         jsonPath: "$.data.value"
-      timeout: 10s
+      timeout: 90s
 ```
 
 The webhook response contains the resolved secret value. The chart exposes the

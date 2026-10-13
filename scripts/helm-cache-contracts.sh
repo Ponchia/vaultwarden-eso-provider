@@ -39,3 +39,12 @@ if helm template bweso "${chart}" -f "${values}" --namespace "${namespace}" \
   echo "expected a negative stale-cache window to fail schema validation" >&2
   exit 1
 fi
+
+# The runtime must receive the operator's KDF memory budget.
+expect_env_value BWESO_ARGON2_MEMORY_LIMIT_MIB 64
+for limit in 0 15 1025; do
+  if helm template bweso "${chart}" -f "${values}" --set config.argon2MemoryLimitMiB="${limit}" >/dev/null 2>&1; then
+    echo "expected invalid Argon2 memory budget to fail" >&2
+    exit 1
+  fi
+done

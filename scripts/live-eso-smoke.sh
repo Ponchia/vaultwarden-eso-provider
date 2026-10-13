@@ -486,7 +486,7 @@ spec:
         }
       result:
         jsonPath: "$.data.value"
-      timeout: 10s
+      timeout: 90s
 ---
 apiVersion: external-secrets.io/v1
 kind: SecretStore
@@ -514,7 +514,7 @@ spec:
         }
       result:
         jsonPath: "$.data"
-      timeout: 10s
+      timeout: 90s
 ---
 apiVersion: external-secrets.io/v1
 kind: ExternalSecret

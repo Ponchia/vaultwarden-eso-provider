@@ -164,6 +164,10 @@ struct Args {
         default_value_t = false
     )]
     insecure_allow_unauthenticated: bool,
+    /// Maximum Argon2id memory cost accepted from the upstream account.
+    /// Increase pod memory together with this budget.
+    #[arg(long, env = "BWESO_ARGON2_MEMORY_LIMIT_MIB", default_value_t = 64)]
+    argon2_memory_limit_mib: u32,
     /// Maximum concurrent /v1/resolve requests. Excess requests are shed with
     /// 503. Set to 0 to disable the cap (not recommended for production).
     #[arg(long, env = "BWESO_RESOLVE_CONCURRENCY_LIMIT", default_value_t = 16)]
@@ -483,18 +487,19 @@ const MAX_POLICY_FILE_BYTES: u64 = 4 * 1024 * 1024;
 /// Parse a policy file: one entry per line, commas also split, surrounding
 /// whitespace trimmed, blank lines and `#` comment lines ignored.
 fn read_policy_file(path: &Path, name: &'static str) -> anyhow::Result<Vec<String>> {
-    let metadata = fs::metadata(path)
-        .with_context(|| format!("failed to stat {name}_file {}", path.display()))?;
-    if metadata.len() > MAX_POLICY_FILE_BYTES {
+    let file = fs::File::open(path)
+        .with_context(|| format!("failed to open {name}_file {}", path.display()))?;
+    let mut contents = String::new();
+    file.take(MAX_POLICY_FILE_BYTES + 1)
+        .read_to_string(&mut contents)
+        .with_context(|| format!("failed to read {name}_file {}", path.display()))?;
+    if contents.len() as u64 > MAX_POLICY_FILE_BYTES {
         bail!(
-            "{name}_file {} is {} bytes, exceeding the {} byte limit",
+            "{name}_file {} is exceeding the {} byte limit",
             path.display(),
-            metadata.len(),
             MAX_POLICY_FILE_BYTES
         );
     }
-    let contents = fs::read_to_string(path)
-        .with_context(|| format!("failed to read {name}_file {}", path.display()))?;
     let mut entries = Vec::new();
     for line in contents.lines() {
         let line = line.trim();
@@ -738,6 +743,7 @@ fn provider_from_args(args: &Args) -> anyhow::Result<Arc<dyn BitwardenProvider>>
         device,
         cache_config,
         http_config,
+        argon2_memory_limit_mib: args.argon2_memory_limit_mib,
     })
     .context("failed to build Bitwarden-compatible API client")?;
 
@@ -1025,7 +1031,7 @@ fn provider_status_and_kind(error: &BitwardenClientError) -> (StatusCode, &'stat
             (StatusCode::BAD_REQUEST, "validation")
         }
         BitwardenClientError::Cipher(CipherError::MissingProperty { .. }) => {
-            (StatusCode::NOT_FOUND, "property_not_found")
+            (StatusCode::UNPROCESSABLE_ENTITY, "property_not_found")
         }
         BitwardenClientError::Api(BitwardenApiError::CipherNotFound) => {
             (StatusCode::NOT_FOUND, "item_not_found")
@@ -1055,6 +1061,12 @@ fn provider_status_and_kind(error: &BitwardenClientError) -> (StatusCode, &'stat
         | BitwardenClientError::Cipher(
             CipherError::Crypto(_) | CipherError::NoExtractableFields { .. },
         ) => (StatusCode::INTERNAL_SERVER_ERROR, "crypto"),
+        BitwardenClientError::Api(BitwardenApiError::UnlockTaskFailed) => {
+            (StatusCode::INTERNAL_SERVER_ERROR, "key_derivation")
+        }
+        BitwardenClientError::Api(BitwardenApiError::InvalidKdfMemoryLimit) => {
+            (StatusCode::INTERNAL_SERVER_ERROR, "kdf_parameters")
+        }
         BitwardenClientError::KeyDerivation(_) => {
             (StatusCode::INTERNAL_SERVER_ERROR, "key_derivation")
         }
@@ -1258,6 +1270,7 @@ mod tests {
             http_request_timeout_seconds: 25,
             ca_bundle_file: None,
             resolve_concurrency_limit: 16,
+            argon2_memory_limit_mib: 64,
             webhook_auth_token: Some("test-webhook-token".to_string()),
             webhook_auth_token_file: None,
             auth_policy_file: None,
@@ -2065,7 +2078,7 @@ frW69DSxg6/fcNRyvdTH+twvVnzH
         });
         assert_eq!(
             provider_status_and_kind(&property_error),
-            (StatusCode::NOT_FOUND, "property_not_found")
+            (StatusCode::UNPROCESSABLE_ENTITY, "property_not_found")
         );
 
         let item_error = BitwardenClientError::from(BitwardenApiError::CipherNotFound);
@@ -2656,7 +2669,7 @@ frW69DSxg6/fcNRyvdTH+twvVnzH
             )
             .await?;
 
-        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
 
         let body = to_bytes(response.into_body(), usize::MAX).await?;
         let body = std::str::from_utf8(&body)?;
@@ -2664,5 +2677,13 @@ frW69DSxg6/fcNRyvdTH+twvVnzH
         assert!(!body.contains("app/database"));
         assert!(!body.contains("DATABASE_URL"));
         Ok(())
+    }
+    #[test]
+    fn provider_config_rejects_invalid_kdf_memory_budget() {
+        for memory_limit in [0, 15, 1025] {
+            let mut args = valid_args();
+            args.argon2_memory_limit_mib = memory_limit;
+            assert!(provider_from_args(&args).is_err());
+        }
     }
 }

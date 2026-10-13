@@ -4,7 +4,7 @@ use argon2::{Algorithm, Argon2, Params, Version};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use hkdf::Hkdf;
 use pbkdf2::pbkdf2_hmac;
-use sha2::Sha256;
+use sha2::{Digest, Sha256};
 use thiserror::Error;
 use zeroize::Zeroize;
 
@@ -210,14 +210,13 @@ pub fn derive_master_key(
                 .map_err(|_| KeyDerivationError::InvalidArgon2Parameters)?;
             let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
             let normalized_salt = normalize_master_password_salt(salt);
+            // Password Manager Argon2id hashes the normalized salt first;
+            // PBKDF2 above deliberately uses the normalized salt directly.
+            let salt_digest = Sha256::digest(normalized_salt.as_bytes());
             let mut derived = [0_u8; MASTER_KEY_LENGTH];
 
             argon2
-                .hash_password_into(
-                    password.as_bytes(),
-                    normalized_salt.as_bytes(),
-                    &mut derived,
-                )
+                .hash_password_into(password.as_bytes(), &salt_digest, &mut derived)
                 .map_err(|_| KeyDerivationError::Argon2Failed)?;
 
             Ok(MasterKey { bytes: derived })
@@ -361,7 +360,7 @@ mod tests {
     const PASSWORD: &str = "correct horse battery staple";
     const SALT: &str = " User@Example.COM ";
     const MASTER_KEY_B64: &str = "Us4tM+AHp8FbPjCDxVH8/5fagwRfqAzGu70svFLG8IQ=";
-    const ARGON2_MASTER_KEY_B64: &str = "Ps6Z+SOMDzbctMokT/CfLACJ1AIaJP7kX5wU0Ikj7QI=";
+    const ARGON2_MASTER_KEY_B64: &str = "aEgjyL6m4hJR5qk6Qow5zqboJtfdI2zu3lSqNkgDE7A=";
     const AUTH_HASH_B64: &str = "0FMeontUyfpu9Ga/DvERL9LMAXg9KB82VK6UqHdnKko=";
     const STRETCHED_B64: &str =
         "g7edjE9X8uarBORCfD/MDZve/5gSVKU1o98r0qTfhKcBYUmp65EqPZpBxLOHioM+PKyI/u+Z3EsaYlhxYRPogQ==";
@@ -570,5 +569,40 @@ mod tests {
         let Ok(_) = MasterKey::try_from([0_u8; MASTER_KEY_LENGTH].as_slice()) else {
             unreachable!("exact master key length should be accepted");
         };
+    }
+    #[test]
+    fn argon2_matches_independent_libargon2_vectors() -> Result<(), Box<dyn std::error::Error>> {
+        // Independently generated with argon2-cffi 25.1.0 (libargon2), not
+        // this crate. Reproduction and provenance: docs/crypto-notes.md.
+        for (password, salt, iterations, memory_mib, parallelism, expected) in [
+            (
+                "interop-password-2026",
+                " CI+Argon@example.test ",
+                3,
+                64,
+                4,
+                "IFs0hn9nvU6S7Rn3oWe63c6MQ5GbqvtuJ9t5u4PtZrc=",
+            ),
+            (
+                "unicode-pässword 🔐",
+                "test@example.test",
+                2,
+                16,
+                2,
+                "ISpkscAIBqnGRueLEP6jNFdyUQcSD8AWubIA4qijAq4=",
+            ),
+        ] {
+            let key = derive_master_key(
+                password,
+                salt,
+                &KdfConfig::Argon2id {
+                    iterations,
+                    memory_mib,
+                    parallelism,
+                },
+            )?;
+            assert_eq!(STANDARD.encode(key.as_bytes()), expected);
+        }
+        Ok(())
     }
 }
