@@ -176,7 +176,8 @@ class EsoFixture:
 
 
 def account_fixture(base: str, binary: Path, kdf_name: str,
-                    kubeconfig: Path | None, gateway: str | None) -> None:
+                    kubeconfig: Path | None, gateway: str | None,
+                    provider_factory: Callable[..., Any] | None = None) -> None:
     password = secrets.token_urlsafe(36)
     email = f"bweso-{uuid.uuid4().hex}@example.test"
     kdf = {"kdf": 0, "kdfIterations": 600_000} if kdf_name == "pbkdf2" else {
@@ -229,7 +230,9 @@ def account_fixture(base: str, binary: Path, kdf_name: str,
     with tempfile.TemporaryDirectory(prefix="bweso-interop-") as temp:
         log_path = Path(temp) / "provider.log"
         with log_path.open("wb") as log:
-            process = subprocess.Popen([str(binary)], env=env, stdout=log, stderr=log)
+            process = (provider_factory(env, log, Path(temp)) if provider_factory else
+                       subprocess.Popen([str(binary)], env=env, stdout=log, stderr=log))
+            webhook = getattr(process, "webhook", webhook)
             try:
                 eventually(lambda: request(webhook + "/livez")[0] == 204, "provider did not become live", 30)
                 def resolve(prop: str | None = "password", key: str | None = None,
@@ -253,9 +256,19 @@ def account_fixture(base: str, binary: Path, kdf_name: str,
                 require(item not in json.dumps(error) and "missing-sensitive-property" not in json.dumps(error),
                         "public error disclosed a selector")
                 if kubeconfig:
-                    eso = EsoFixture(kubeconfig, "bweso-interop-" + uuid.uuid4().hex[:12], webhook, webhook_token, item)
+                    eso = EsoFixture(kubeconfig, "bweso-interop-" + uuid.uuid4().hex[:12], getattr(process, "eso_url", webhook), webhook_token, item)
                     eventually(lambda: eso.values_equal(value), "ESO did not create both target Secrets")
                     eso.missing_property_preserves_targets(value)
+                if provider_factory:
+                    process.restart()
+                    eventually(lambda: (lambda r: r[0] == 200 and r[1]["data"]["value"] == value)(resolve()),
+                               "packaged provider did not recover after restart", 120)
+                    process.rollback_probe(resolve, kdf_name, value)
+                    if eso:
+                        process.cross_version_probe(resolve, kdf_name, value, eso)
+                    if eso:
+                        eso.run(["-n", eso.namespace, "delete", "secret", "target-delete"])
+                        eventually(lambda: eso.values_equal(value), "ESO did not recreate the removed target", 120)
                 rotated = secrets.token_urlsafe(28)
                 cipher["login"]["password"] = encrypt(item_key, rotated)
                 success(base + "/api/ciphers/" + item, "PUT", cipher, token)
