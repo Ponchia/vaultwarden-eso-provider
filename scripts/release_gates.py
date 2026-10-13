@@ -6,7 +6,7 @@ import json
 import os
 import subprocess
 
-REQUIRED = ("Rust", "Minimum Rust", "Helm", "Security", "Docker", "CodeQL Rust",
+REQUIRED = ("Rust", "Minimum Rust", "License notices", "Helm", "Security", "Docker", "CodeQL Rust",
             "CodeQL Actions", "Vaultwarden and ESO", "Packaged provider (amd64)",
             "Packaged provider (arm64)")
 
@@ -28,7 +28,7 @@ def main() -> None:
     result = subprocess.run(["gh", "api", f"repos/{os.environ['GITHUB_REPOSITORY']}/commits/{revision}/check-runs?per_page=100"],
                             check=True, capture_output=True, text=True, timeout=60)
     validate(json.loads(result.stdout), revision)
-    print("All ten source and native packaged checks passed on the release commit.")
+    print("All required source, attribution and native packaged checks passed on the release commit.")
 
 
 if __name__ == "__main__":

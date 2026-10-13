@@ -4,6 +4,8 @@ This repository keeps user-facing documentation in Git so changes go through
 pull requests, CI, review, release-note labels, and the same history as the
 code.
 
+- [Stable 0.5.0 readiness and distribution inventory](stable-readiness.md)
+
 ## Start Here
 
 | Goal | Document |

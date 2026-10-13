@@ -92,3 +92,29 @@ cosign verify-blob \
 The OCI Helm chart digest in the release notes is separate from the `.tgz`
 archive SHA256. Use the OCI digest for registry audit trails and the archive
 SHA256 for the file attached to the GitHub Release.
+
+## Complete distribution bundles
+
+The stable-preparation workflow adds `release-manifest.json`, `SHA256SUMS`,
+its Sigstore bundle, Linux AMD64/ARM64 archives, runtime SPDX inventories and
+Cargo dependency notices. Earlier releases, including `0.5.0-rc.1`, do not
+contain that entire attachment set. Check the exact release before using this
+verification path.
+
+Verify `SHA256SUMS.sigstore.json` with `cosign verify-blob` using the **exact**
+release workflow identity and tag, then run `sha256sum --check SHA256SUMS` in
+the downloaded directory. A checksum fetched alongside files is not by itself
+authenticity verification; verify its signature first. Native archives contain
+the same executable extracted from the published container, not a separate
+source build. They include the project license and dependency notices.
+
+For a current checkout's stricter allowlist verification:
+
+```bash
+python3 scripts/release_bundle.py verify --directory /path/to/downloads
+```
+
+This checks both platform archives, safe member names and types, matching
+notices, SPDX document shape, exact manifest hashes and checksum membership.
+Signature/provenance verification is a separate prerequisite, not something
+this offline structural check silently assumes it has performed.

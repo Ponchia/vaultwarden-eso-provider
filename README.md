@@ -22,6 +22,9 @@ with Bitwarden, Vaultwarden, or External Secrets Operator.
 
 ## Release status
 
+The source tree prepares `0.5.0`; its remaining acceptance gate is tracked in
+[stable readiness](docs/stable-readiness.md). It is not published yet.
+
 **The `v0.5.0-rc.1` prerelease line contains the Argon2 and deletion-safety fixes.**
 Check [GitHub Releases](https://github.com/Ponchia/vaultwarden-eso-provider/releases)
 for published artifacts and verification evidence. `v0.4.0` is the previous
