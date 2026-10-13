@@ -40,6 +40,7 @@ class ReleaseBundleTests(unittest.TestCase):
                 "packages":[{"SPDXID":"SPDXRef-ProviderBinary", "versionInfo":self.version,
                              "checksums":[{"algorithm":"SHA256", "checksumValue":hashlib.sha256(binary.read_bytes()).hexdigest()}]},
                             {"SPDXID":"SPDXRef-Source"}]}))
+        (self.root / "release-readiness.json").write_text(json.dumps({"schemaVersion":1, "targetVersion":self.version, "cloud":{"status":"passed"}}))
         write_bundle(self.root, self.version, "a" * 40, "sha256:" + "b" * 64, "sha256:" + "c" * 64)
 
     def test_roundtrip_and_explicit_allowlist(self):
@@ -123,6 +124,12 @@ class ReleaseBundleTests(unittest.TestCase):
             path.write_text(json.dumps(obj))
             with self.assertRaises(ValueError):
                 verify(self.root)
+
+    def test_stable_distribution_rejects_pending_readiness(self):
+        self.populate()
+        path = self.root / "release-readiness.json"
+        path.write_text(json.dumps({"schemaVersion":1, "targetVersion":self.version, "cloud":{"status":"pending"}}))
+        with self.assertRaises(ValueError): verify(self.root)
 
     def test_invalid_manifest_digest(self):
         with self.assertRaises(ValueError):

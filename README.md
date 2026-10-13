@@ -22,7 +22,7 @@ with Bitwarden, Vaultwarden, or External Secrets Operator.
 
 ## Release status
 
-Stable `0.5.0` preparation and its remaining acceptance gate are tracked in
+The source tree prepares `0.5.0`; its remaining acceptance gate is tracked in
 [stable readiness](docs/stable-readiness.md). It is not published yet.
 
 **The `v0.5.0-rc.1` prerelease line contains the Argon2 and deletion-safety fixes.**

@@ -518,7 +518,7 @@ jobs:
           RELEASE_IMAGE_DIGEST: ${{ needs.image.outputs.image_digest }}
           RELEASE_CHART_DIGEST: ${{ steps.helm_push.outputs.digest }}
         run: |
-          cp THIRD-PARTY-LICENSES.txt dist/
+          cp THIRD-PARTY-LICENSES.txt docs/release-readiness.json dist/
           python3 scripts/release_bundle.py manifest --directory dist --version "${GITHUB_REF_NAME#v}" \
             --revision "${GITHUB_SHA}" --image "${RELEASE_IMAGE_DIGEST}" --chart "${RELEASE_CHART_DIGEST}"
           python3 scripts/release_bundle.py verify --directory dist
@@ -531,6 +531,7 @@ jobs:
             dist/*.spdx.json
             dist/THIRD-PARTY-LICENSES.txt
             dist/release-manifest.json
+            dist/release-readiness.json
             dist/SHA256SUMS
 
       - name: Generate release notes
@@ -614,6 +615,7 @@ jobs:
             dist/*.spdx.json
             dist/THIRD-PARTY-LICENSES.txt
             dist/release-manifest.json
+            dist/release-readiness.json
             dist/SHA256SUMS
 
       - name: Attach chart to GitHub Release
@@ -630,6 +632,7 @@ jobs:
             dist/*.spdx.json
             dist/THIRD-PARTY-LICENSES.txt
             dist/release-manifest.json
+            dist/release-readiness.json
             dist/SHA256SUMS
 
       - name: Verify GitHub Release evidence
@@ -655,7 +658,7 @@ jobs:
             exit 1
           fi
 
-          for asset in "$chart_name" "$bundle_name" SHA256SUMS SHA256SUMS.sigstore.json release-manifest.json THIRD-PARTY-LICENSES.txt \
+          for asset in "$chart_name" "$bundle_name" SHA256SUMS SHA256SUMS.sigstore.json release-manifest.json release-readiness.json THIRD-PARTY-LICENSES.txt \
             "vaultwarden-eso-provider-${GITHUB_REF_NAME#v}-linux-amd64.tar.gz" \
             "vaultwarden-eso-provider-${GITHUB_REF_NAME#v}-linux-arm64.tar.gz" sbom-linux-amd64.spdx.json sbom-linux-arm64.spdx.json; do
             if ! jq -e --arg name "$asset" \

@@ -8,7 +8,7 @@ Release notes are generated from merged pull requests using
 [`.github/release.yml`](.github/release.yml). Maintainers should label PRs
 before release so generated notes land in the right category.
 
-## Unreleased — stable release preparation
+## v0.5.0 — Unreleased
 
 - Update the optional locked QUIC dependency past five published advisories;
   keep disabled dependencies out of the actual distribution inventory.

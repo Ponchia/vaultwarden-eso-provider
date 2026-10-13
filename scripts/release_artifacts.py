@@ -81,7 +81,7 @@ def main() -> None:
     require(registry_manifest.get("digest") == chart_digest, "OCI chart manifest digest differs from release evidence")
     run(["gh", "release", "download", tag, "--repo", repo, "--dir", str(destination),
          "--pattern", "SHA256SUMS", "--pattern", "SHA256SUMS.sigstore.json",
-         "--pattern", "release-manifest.json", "--pattern", "THIRD-PARTY-LICENSES.txt",
+         "--pattern", "release-manifest.json", "--pattern", "release-readiness.json", "--pattern", "THIRD-PARTY-LICENSES.txt",
          "--pattern", "vaultwarden-eso-provider-*-linux-*.tar.gz", "--pattern", "sbom-linux-*.spdx.json"])
     sums = destination / "SHA256SUMS"
     run(["cosign", "verify-blob", "--bundle", str(sums) + ".sigstore.json", *certificate, str(sums)])

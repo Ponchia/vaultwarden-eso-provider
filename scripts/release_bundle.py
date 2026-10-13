@@ -84,12 +84,17 @@ def check_archive(path: Path, arch: str) -> dict[str, str]:
 
 def asset_names(version: str) -> list[str]:
     require(VERSION.fullmatch(version) is not None, "invalid release version")
-    return [f"vaultwarden-eso-provider-{version}.tgz", "THIRD-PARTY-LICENSES.txt", *[
+    return [f"vaultwarden-eso-provider-{version}.tgz", "THIRD-PARTY-LICENSES.txt", "release-readiness.json", *[
         name for arch in ARCHES for name in (binary_name(version, arch), f"sbom-linux-{arch}.spdx.json")]]
 
 
 def inventory(directory: Path, version: str) -> list[dict[str, Any]]:
     result = []
+    readiness = json.loads(read_regular(directory / "release-readiness.json"))
+    require(readiness.get("schemaVersion") == 1 and readiness.get("targetVersion") == version.split("-", 1)[0],
+            "release readiness targets a different version")
+    require("-" in version or readiness.get("cloud", {}).get("status") == "passed",
+            "stable distribution has no passed Cloud acceptance record")
     member_hashes = {arch: check_archive(directory / binary_name(version, arch), arch) for arch in ARCHES}
     notices_hash = hashlib.sha256(read_regular(directory / "THIRD-PARTY-LICENSES.txt")).hexdigest()
     for members in member_hashes.values():

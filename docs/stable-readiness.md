@@ -17,7 +17,8 @@ those notices as well.
 
 The complete release attachment set is the Helm archive and its Sigstore
 bundle, both native archives, both runtime SPDX SBOMs, dependency notices,
-`release-manifest.json`, `SHA256SUMS`, and `SHA256SUMS.sigstore.json`.
+`release-manifest.json`, the redacted `release-readiness.json`, `SHA256SUMS`,
+and `SHA256SUMS.sigstore.json`.
 The checksum signature covers the exact payload allowlist, including the
 machine-readable inventory. GitHub provenance attests the distribution files.
 The signature bundle cannot include its own checksum. Source archives are
@@ -89,9 +90,9 @@ A green CI build cannot turn a pending backend result into a pass.
 
 ## Complete the release
 
-Finish the dedicated account, run the Cloud acceptance against the final
-candidate and add its redacted result. Align all package/chart versions and
-upgrade notes, then pass the exact-head source and both native packaged checks.
+Finish the dedicated account, run the Cloud acceptance against the prepared
+0.5.0 candidate and add its redacted result. The Cargo packages and Helm chart
+already agree on 0.5.0; pass the exact-head source and both native packaged checks.
 Create the authorized `v0.5.0` tag only after the strict readiness check passes.
 Verify every published download and run `qualification.yml` with that tag as
 both `ref` and `release_tag`. The same signed digests then go through the
