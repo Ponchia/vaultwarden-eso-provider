@@ -1,0 +1,161 @@
+name: Artifact qualification
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: qualification-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  packaged:
+    name: Packaged provider (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+            kind_sha256: aee6151561422756b764a4ae28e7f44cda5af5a9eead3cc9985112b1de8d8e0d
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            kind_sha256: 20022bee6cfcd5086cb7234d218e3454e6090022f2a8f55d1fa7fcf42c3867a2
+    env:
+      ARCH: ${{ matrix.arch }}
+      KIND_SHA256: ${{ matrix.kind_sha256 }}
+      KIND_VERSION: v0.33.0
+      KIND_IMAGE: kindest/node:v1.35.8@sha256:07b2536e30b803ed61d1677a79df6115f798ce64c80f9e22f6ed45afd09323c0
+      ESO_CHART_VERSION: 2.12.0
+    services:
+      vaultwarden:
+        image: vaultwarden/server:1.37.4@sha256:efb3cde962015fcc036b2ea625242248611943b27212ebf4392841fb30fad055
+        ports: ["8081:80"]
+        env:
+          SIGNUPS_ALLOWED: "true"
+          SIGNUPS_VERIFY: "false"
+          WEB_VAULT_ENABLED: "false"
+          I_REALLY_WANT_VOLATILE_STORAGE: "true"
+    steps:
+      - name: Checkout exact candidate source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Install Helm
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5
+        with:
+          version: v4.1.4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+      - name: Prepare independent fixture tooling
+        run: |
+          echo "KUBECONFIG=${RUNNER_TEMP}/bweso-interop.kubeconfig" >> "${GITHUB_ENV}"
+          python3 -m venv "${RUNNER_TEMP}/qualification-venv"
+          "${RUNNER_TEMP}/qualification-venv/bin/pip" install --disable-pip-version-check -r scripts/requirements-integration.txt
+          python3 -m py_compile scripts/artifact-smoke.py scripts/vaultwarden-smoke.py
+      - name: Build exact candidate image and chart without publishing
+        run: |
+          set -euo pipefail
+          revision="$(git rev-parse HEAD)"
+          image="bweso-candidate:${revision}"
+          docker buildx build --load --tag "${image}" --label "org.opencontainers.image.revision=${revision}" .
+          mkdir -p "${RUNNER_TEMP}/public-artifacts"
+          helm package deploy/helm/vaultwarden-eso-provider --destination "${RUNNER_TEMP}/public-artifacts"
+          image_id="$(docker inspect "${image}" --format '{{.Id}}')"
+          {
+            echo "QUALIFICATION_IMAGE=${image}"
+            echo "QUALIFICATION_IMAGE_ID=${image_id}"
+            echo "QUALIFICATION_REVISION=${revision}"
+          } >> "${GITHUB_ENV}"
+          container="$(docker create "${image}")"
+          docker cp "${container}:/usr/local/bin/vaultwarden-eso-provider" "${RUNNER_TEMP}/public-artifacts/provider-linux-${ARCH}"
+          docker rm "${container}"
+          docker save "${image}" | gzip -n > "${RUNNER_TEMP}/public-artifacts/image-linux-${ARCH}.tar.gz"
+      - name: Create disposable cluster and install ESO
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location "https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-linux-${ARCH}" -o "${RUNNER_TEMP}/kind"
+          printf '%s  %s\n' "${KIND_SHA256}" "${RUNNER_TEMP}/kind" | sha256sum --check
+          chmod +x "${RUNNER_TEMP}/kind"
+          echo "${RUNNER_TEMP}" >> "${GITHUB_PATH}"
+          "${RUNNER_TEMP}/kind" create cluster --name bweso-interop --image "${KIND_IMAGE}" --kubeconfig "${KUBECONFIG}" --wait 120s
+          "${RUNNER_TEMP}/kind" load docker-image "${QUALIFICATION_IMAGE}" --name bweso-interop
+          docker cp bweso-interop-control-plane:/usr/bin/kubectl "${RUNNER_TEMP}/kubectl"
+          chmod +x "${RUNNER_TEMP}/kubectl"
+          helm repo add external-secrets https://charts.external-secrets.io
+          helm install external-secrets external-secrets/external-secrets --version "${ESO_CHART_VERSION}" \
+            --namespace external-secrets --create-namespace --wait --timeout 180s
+      - name: Verify actual packaged deployment and recovery
+        run: |
+          set -euo pipefail
+          gateway="$(docker inspect bweso-interop-control-plane --format '{{(index .NetworkSettings.Networks "kind").Gateway}}')"
+          if [ -z "${gateway}" ]; then
+            network_id="$(docker network inspect kind --format '{{.Id}}')"
+            gateway="$(ip -j -4 address show dev "br-${network_id:0:12}" | jq -r '.[0].addr_info[] | select(.scope == "global") | .local' | head -1)"
+          fi
+          test -n "${gateway}"
+          chart="$(find "${RUNNER_TEMP}/public-artifacts" -maxdepth 1 -name '*.tgz' -print)"
+          "${RUNNER_TEMP}/qualification-venv/bin/python" scripts/artifact-smoke.py --chart "${chart}" \
+            --image "${QUALIFICATION_IMAGE}" --image-id "${QUALIFICATION_IMAGE_ID}" \
+            --kubeconfig "${KUBECONFIG}" --kind-gateway "${gateway}"
+      - name: Record public artifact identities only
+        run: |
+          set -euo pipefail
+          cd "${RUNNER_TEMP}/public-artifacts"
+          jq -n --arg revision "${QUALIFICATION_REVISION}" --arg arch "${ARCH}" --arg imageId "${QUALIFICATION_IMAGE_ID}" \
+            '{sourceRevision:$revision,architecture:$arch,imageConfigDigest:$imageId,qualification:"passed",backend:"Vaultwarden 1.37.4",eso:"2.12.0",cloudTested:false,published:false}' > qualification.json
+          sha256sum ./*.tgz ./provider-linux-* ./image-linux-*.tar.gz ./qualification.json > SHA256SUMS
+      - name: Retain only verified artifact allowlist
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: qualified-provider-${{ matrix.arch }}-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            ${{ runner.temp }}/public-artifacts/*.tgz
+            ${{ runner.temp }}/public-artifacts/provider-linux-*
+            ${{ runner.temp }}/public-artifacts/image-linux-*.tar.gz
+            ${{ runner.temp }}/public-artifacts/qualification.json
+            ${{ runner.temp }}/public-artifacts/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 14
+      - name: Remove disposable cluster
+        if: always()
+        run: |
+          if [ -x "${RUNNER_TEMP}/kind" ]; then
+            "${RUNNER_TEMP}/kind" delete cluster --name bweso-interop --kubeconfig "${KUBECONFIG}"
+          fi
+
+  attest:
+    name: Attest qualified candidates
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: packaged
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - name: Download only this run's qualified artifacts
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          pattern: qualified-provider-*
+          path: verified
+      - name: Verify archived bytes before attestation
+        run: |
+          for directory in verified/qualified-provider-*/; do
+            (cd "${directory}" && sha256sum --check SHA256SUMS)
+          done
+      - name: Attest archive and binary provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-path: |
+            verified/qualified-provider-*/*.tgz
+            verified/qualified-provider-*/provider-linux-*
+            verified/qualified-provider-*/image-linux-*.tar.gz

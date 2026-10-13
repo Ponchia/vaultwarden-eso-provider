@@ -22,7 +22,10 @@ with Bitwarden, Vaultwarden, or External Secrets Operator.
 
 ## Release status
 
-**`v0.4.0` is the published release. `main` contains unreleased changes.**
+**`v0.4.0` is the published release. `0.5.0-rc.1` is an unpublished candidate.**
+
+See [candidate qualification](docs/release-qualification.md) for the exact-artifact
+checks and the separate private Bitwarden Cloud acceptance.
 
 A compatibility review found that the published Argon2id derivation uses the
 wrong salt preprocessing. The correction and independent regression vectors

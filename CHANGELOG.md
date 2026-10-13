@@ -8,7 +8,9 @@ Release notes are generated from merged pull requests using
 [`.github/release.yml`](.github/release.yml). Maintainers should label PRs
 before release so generated notes land in the right category.
 
-## Unreleased
+## v0.5.0-rc.1 - Unreleased candidate
+
+This version identifies qualification artifacts only; no release has been published.
 
 - Throttle failed refresh bursts even with a cold cache or authentication
   failure; cooldown responses fail closed and never grant stale reads.

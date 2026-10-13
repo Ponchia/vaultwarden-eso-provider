@@ -31,6 +31,7 @@ code.
 | Goal | Document |
 | --- | --- |
 | Run local checks and open PRs | [Contributing](../CONTRIBUTING.md) |
+| Verify candidate artifacts privately and in CI | [Candidate qualification](release-qualification.md) |
 | Prepare a public release | [Public release checklist](public-release-checklist.md) |
 | Track user-facing changes | [Changelog](../CHANGELOG.md) |
 | Govern repository settings | [Repository governance](repository-governance.md) |
