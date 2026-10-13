@@ -19,6 +19,8 @@ FROM scratch AS runtime
 
 COPY --from=builder /usr/local/bin/vaultwarden-eso-provider /usr/local/bin/vaultwarden-eso-provider
 
+COPY LICENSE THIRD-PARTY-LICENSES.txt /usr/share/licenses/vaultwarden-eso-provider/
+
 USER 65532:65532
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \

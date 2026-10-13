@@ -5,8 +5,14 @@ private until maintainers have confirmed impact and prepared a fix.
 
 ## Supported Versions
 
-Pre-1.0 releases are supported on a best-effort basis. The public compatibility
-contract is intentionally conservative until the first stable release.
+The latest published release receives best-effort security fixes. Pre-1.0
+versions do not have a long-term-support commitment. Check the README release
+status and compatibility matrix before deployment; a prerelease is not stable
+qualification. No independent audit is claimed.
+
+The 0.4.0 Argon2 interoperability defect and unsafe missing-property deletion
+signal are corrected in 0.5.0-rc.1. Do not lower an account KDF as a workaround.
+Use the fixed prerelease deliberately or await qualified stable 0.5.0.
 
 ## Reporting Vulnerabilities
 

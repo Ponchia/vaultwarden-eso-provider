@@ -8,6 +8,17 @@ Release notes are generated from merged pull requests using
 [`.github/release.yml`](.github/release.yml). Maintainers should label PRs
 before release so generated notes land in the right category.
 
+## Unreleased — stable release preparation
+
+- Add Linux AMD64/ARM64 binary archives extracted from the exact container,
+  runtime SPDX inventories, generated Cargo dependency notices, a complete
+  release manifest, signed checksums and public-download verification.
+- Include dependency notices in the container and reject stale attribution.
+- Verify OCI chart manifest identity as well as signed chart archive bytes.
+- Refuse stable publication without fresh, source-bound Cloud acceptance.
+  Dedicated-account verification remains pending; `0.5.0` is not published.
+- Add the project funding link and clarify supported-version expectations.
+
 ## v0.5.0-rc.1 - 2026-10-13
 
 Prerelease: Vaultwarden packages are qualified on AMD64 and ARM64. Current

@@ -115,3 +115,7 @@ mutants:
 # Run the live ESO smoke test with caller-provided BWESO_E2E_* env.
 live-smoke:
   bash scripts/live-eso-smoke.sh
+
+# Inspect the stable gate without publishing or reading any credentials.
+stable-readiness:
+  python3 scripts/stable_readiness.py --tag v0.5.0 --status

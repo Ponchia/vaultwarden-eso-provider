@@ -21,9 +21,13 @@ BINARY_MEMBERS = {"vaultwarden-eso-provider", "LICENSE", "THIRD-PARTY-LICENSES.t
 MAX_FILE = 64 * 1024 * 1024
 
 
+class BundleError(ValueError):
+    """A fixed diagnostic that never embeds artifact contents."""
+
+
 def require(condition: bool, message: str) -> None:
     if not condition:
-        raise ValueError(message)
+        raise BundleError(message)
 
 
 def read_regular(path: Path, limit: int = MAX_FILE) -> bytes:
@@ -142,11 +146,19 @@ def main() -> None:
         build.add_argument("--" + key, required=True)
     check = sub.add_parser("verify")
     check.add_argument("--directory", type=Path, required=True)
+    native = sub.add_parser("verify-native")
+    native.add_argument("--binary", type=Path, required=True)
+    native.add_argument("--archive", type=Path, required=True)
+    native.add_argument("--arch", choices=ARCHES, required=True)
     args = parser.parse_args()
     if args.command == "package":
         package(args.binary, args.license, args.notices, args.output, args.arch)
     elif args.command == "manifest":
         write_bundle(args.directory, args.version, args.revision, args.image, args.chart)
+    elif args.command == "verify-native":
+        hashes = check_archive(args.archive, args.arch)
+        require(hashes["vaultwarden-eso-provider"] == hashlib.sha256(read_regular(args.binary)).hexdigest(),
+                "downloaded native binary differs from the container binary")
     else:
         verify(args.directory)
     print("Release bundle " + args.command + " passed.")
@@ -156,4 +168,4 @@ if __name__ == "__main__":
     try:
         main()
     except (ValueError, OSError, tarfile.TarError, KeyError, TypeError) as error:
-        raise SystemExit("Release bundle failed: " + type(error).__name__) from None
+        raise SystemExit("Release bundle failed: " + (str(error) if isinstance(error, BundleError) else type(error).__name__)) from None

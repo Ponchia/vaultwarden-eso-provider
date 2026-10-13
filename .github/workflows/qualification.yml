@@ -131,6 +131,28 @@ jobs:
           docker cp "${container}:/usr/local/bin/vaultwarden-eso-provider" "${RUNNER_TEMP}/public-artifacts/provider-linux-${ARCH}"
           docker rm "${container}"
           docker save "${image}" | gzip -n > "${RUNNER_TEMP}/public-artifacts/image-linux-${ARCH}.tar.gz"
+      - name: Build and check native distribution archive
+        run: |
+          set -euo pipefail
+          version="$(helm show chart deploy/helm/vaultwarden-eso-provider | awk '/^version:/ {print $2}')"
+          directory="${RUNNER_TEMP}/public-artifacts"
+          archive="${directory}/vaultwarden-eso-provider-${version}-linux-${ARCH}.tar.gz"
+          chmod +x "${directory}/provider-linux-${ARCH}"
+          test "$("${directory}/provider-linux-${ARCH}" --version)" = "vaultwarden-eso-provider ${version}"
+          if [ -z "${RELEASE_TAG}" ]; then
+            cp THIRD-PARTY-LICENSES.txt "${directory}/THIRD-PARTY-LICENSES.txt"
+            python3 scripts/release_bundle.py package --binary "${directory}/provider-linux-${ARCH}" \
+              --license LICENSE --notices THIRD-PARTY-LICENSES.txt --arch "${ARCH}" --output "${archive}"
+          fi
+          python3 scripts/release_bundle.py verify-native --binary "${directory}/provider-linux-${ARCH}" \
+            --archive "${archive}" --arch "${ARCH}"
+      - name: Generate candidate runtime SBOM
+        if: inputs.release_tag == ''
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ env.QUALIFICATION_IMAGE }}
+          format: spdx-json
+          output: ${{ runner.temp }}/public-artifacts/sbom-linux-${{ matrix.arch }}.spdx.json
       - name: Fetch immutable released baseline for migration tests
         run: |
           set -euo pipefail
@@ -173,7 +195,7 @@ jobs:
           cd "${RUNNER_TEMP}/public-artifacts"
           jq -n --arg revision "${QUALIFICATION_REVISION}" --arg arch "${ARCH}" --arg imageId "${QUALIFICATION_IMAGE_ID}" --arg releaseTag "${RELEASE_TAG}" --arg imageDigest "${QUALIFICATION_RELEASE_IMAGE_DIGEST:-}" \
             '{sourceRevision:$revision,architecture:$arch,imageConfigDigest:$imageId,qualification:"passed",backend:"Vaultwarden 1.37.4",eso:"2.12.0",cloudTested:false,published:($releaseTag != ""),releaseTag:$releaseTag,releaseImageDigest:$imageDigest}' > qualification.json
-          sha256sum ./*.tgz ./provider-linux-* ./image-linux-*.tar.gz ./qualification.json > SHA256SUMS
+          sha256sum ./*.tgz ./provider-linux-* ./image-linux-*.tar.gz ./vaultwarden-eso-provider-*-linux-*.tar.gz ./sbom-linux-*.spdx.json ./THIRD-PARTY-LICENSES.txt ./qualification.json > QUALIFICATION-SHA256SUMS
       - name: Retain only verified artifact allowlist
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
@@ -183,7 +205,10 @@ jobs:
             ${{ runner.temp }}/public-artifacts/provider-linux-*
             ${{ runner.temp }}/public-artifacts/image-linux-*.tar.gz
             ${{ runner.temp }}/public-artifacts/qualification.json
-            ${{ runner.temp }}/public-artifacts/SHA256SUMS
+            ${{ runner.temp }}/public-artifacts/QUALIFICATION-SHA256SUMS
+            ${{ runner.temp }}/public-artifacts/vaultwarden-eso-provider-*-linux-*.tar.gz
+            ${{ runner.temp }}/public-artifacts/sbom-linux-*.spdx.json
+            ${{ runner.temp }}/public-artifacts/THIRD-PARTY-LICENSES.txt
           if-no-files-found: error
           retention-days: 14
       - name: Remove disposable cluster
@@ -211,7 +236,7 @@ jobs:
       - name: Verify archived bytes before attestation
         run: |
           for directory in verified/qualified-provider-*/; do
-            (cd "${directory}" && sha256sum --check SHA256SUMS)
+            (cd "${directory}" && sha256sum --check QUALIFICATION-SHA256SUMS)
           done
       - name: Attest archive and binary provenance
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
@@ -220,3 +245,6 @@ jobs:
             verified/qualified-provider-*/*.tgz
             verified/qualified-provider-*/provider-linux-*
             verified/qualified-provider-*/image-linux-*.tar.gz
+            verified/qualified-provider-*/vaultwarden-eso-provider-*-linux-*.tar.gz
+            verified/qualified-provider-*/sbom-linux-*.spdx.json
+            verified/qualified-provider-*/THIRD-PARTY-LICENSES.txt
