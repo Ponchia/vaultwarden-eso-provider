@@ -23,7 +23,7 @@ jobs:
       matrix:
         include:
           - arch: amd64
-            runner: ubuntu-latest
+            runner: ubuntu-24.04
             kind_sha256: aee6151561422756b764a4ae28e7f44cda5af5a9eead3cc9985112b1de8d8e0d
           - arch: arm64
             runner: ubuntu-24.04-arm
@@ -44,6 +44,10 @@ jobs:
           SIGNUPS_VERIFY: "false"
           WEB_VAULT_ENABLED: "false"
           I_REALLY_WANT_VOLATILE_STORAGE: "true"
+          # Compressed restart/rollback tests intentionally unlock many times.
+          # This changes only the disposable fixture, not production limits.
+          LOGIN_RATELIMIT_MAX_BURST: "1000"
+          UNAUTHENTICATED_RATELIMIT_MAX_BURST: "1000"
     steps:
       - name: Checkout exact candidate source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -81,6 +85,14 @@ jobs:
           labels: org.opencontainers.image.revision=${{ env.QUALIFICATION_REVISION }}
           cache-from: type=gha,scope=qualification-${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=qualification-${{ matrix.arch }}
+      - name: Scan exact candidate container
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ env.QUALIFICATION_IMAGE }}
+          scanners: vuln,secret
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          ignore-unfixed: true
       - name: Build exact candidate image and chart without publishing
         run: |
           set -euo pipefail
@@ -164,7 +176,7 @@ jobs:
     name: Attest qualified candidates
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: packaged
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       id-token: write

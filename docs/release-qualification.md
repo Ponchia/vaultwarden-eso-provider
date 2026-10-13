@@ -11,6 +11,12 @@ AMD64 and ARM64, packages the chart once per job, and deploys that archive with
 the exact locally loaded image into an isolated kind cluster. No public registry
 push occurs. Fixtures create independent PBKDF2 and Argon2 accounts on a pinned
 Vaultwarden service; they never use real accounts or a user's email.
+The fixture increases only its disposable backend's login burst limit because
+it compresses many restart/rollback unlocks into minutes. Production limits
+are unchanged. The separate normal interoperability workflow retains the
+backend defaults; this qualification is not a rate-limit/load test (#76).
+The exact loaded container is scanned for high/critical fixed vulnerabilities
+and embedded secrets before testing or retaining its archive.
 
 The checks exercise private-CA TLS, file-mounted credentials, item and field
 reads, policy enforcement, source rotation, missing fields versus deletion,

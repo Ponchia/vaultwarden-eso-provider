@@ -231,7 +231,7 @@ class HelmProvider:
         status, document = resolve()
         if kdf_name == "pbkdf2":
             require(status == 200 and document["data"]["value"] == expected,
-                    "released PBKDF2 chart/image rollback failed")
+                    f"released PBKDF2 chart/image rollback failed (HTTP {status})")
         else:
             require(status == 500, "known-incompatible released Argon2 path did not fail with the expected decryption error")
         require(eso.values_equal(expected), "cross-version rollback lost an existing ESO target")
