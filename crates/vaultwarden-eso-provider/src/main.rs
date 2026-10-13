@@ -86,8 +86,9 @@ struct Args {
     /// refresh failure. Disabled by default.
     #[arg(long, env = "BWESO_CACHE_STALE_IF_ERROR_SECONDS", default_value_t = 0)]
     cache_stale_if_error_seconds: u64,
-    /// Minimum seconds between upstream refresh attempts while stale data is
-    /// being served. Set to 0 to retry on every resolve request.
+    /// Minimum seconds between failed upstream refresh attempts, including
+    /// cold-cache and authentication failures. This never enables stale reads.
+    /// Set to 0 to retry on every resolve request.
     #[arg(
         long,
         env = "BWESO_CACHE_REFRESH_RETRY_INTERVAL_SECONDS",
@@ -164,6 +165,10 @@ struct Args {
         default_value_t = false
     )]
     insecure_allow_unauthenticated: bool,
+    /// Maximum Argon2id memory cost accepted from the upstream account.
+    /// Increase pod memory together with this budget.
+    #[arg(long, env = "BWESO_ARGON2_MEMORY_LIMIT_MIB", default_value_t = 64)]
+    argon2_memory_limit_mib: u32,
     /// Maximum concurrent /v1/resolve requests. Excess requests are shed with
     /// 503. Set to 0 to disable the cap (not recommended for production).
     #[arg(long, env = "BWESO_RESOLVE_CONCURRENCY_LIMIT", default_value_t = 16)]
@@ -483,18 +488,19 @@ const MAX_POLICY_FILE_BYTES: u64 = 4 * 1024 * 1024;
 /// Parse a policy file: one entry per line, commas also split, surrounding
 /// whitespace trimmed, blank lines and `#` comment lines ignored.
 fn read_policy_file(path: &Path, name: &'static str) -> anyhow::Result<Vec<String>> {
-    let metadata = fs::metadata(path)
-        .with_context(|| format!("failed to stat {name}_file {}", path.display()))?;
-    if metadata.len() > MAX_POLICY_FILE_BYTES {
+    let file = fs::File::open(path)
+        .with_context(|| format!("failed to open {name}_file {}", path.display()))?;
+    let mut contents = String::new();
+    file.take(MAX_POLICY_FILE_BYTES + 1)
+        .read_to_string(&mut contents)
+        .with_context(|| format!("failed to read {name}_file {}", path.display()))?;
+    if contents.len() as u64 > MAX_POLICY_FILE_BYTES {
         bail!(
-            "{name}_file {} is {} bytes, exceeding the {} byte limit",
+            "{name}_file {} is exceeding the {} byte limit",
             path.display(),
-            metadata.len(),
             MAX_POLICY_FILE_BYTES
         );
     }
-    let contents = fs::read_to_string(path)
-        .with_context(|| format!("failed to read {name}_file {}", path.display()))?;
     let mut entries = Vec::new();
     for line in contents.lines() {
         let line = line.trim();
@@ -738,6 +744,7 @@ fn provider_from_args(args: &Args) -> anyhow::Result<Arc<dyn BitwardenProvider>>
         device,
         cache_config,
         http_config,
+        argon2_memory_limit_mib: args.argon2_memory_limit_mib,
     })
     .context("failed to build Bitwarden-compatible API client")?;
 
@@ -1025,7 +1032,7 @@ fn provider_status_and_kind(error: &BitwardenClientError) -> (StatusCode, &'stat
             (StatusCode::BAD_REQUEST, "validation")
         }
         BitwardenClientError::Cipher(CipherError::MissingProperty { .. }) => {
-            (StatusCode::NOT_FOUND, "property_not_found")
+            (StatusCode::UNPROCESSABLE_ENTITY, "property_not_found")
         }
         BitwardenClientError::Api(BitwardenApiError::CipherNotFound) => {
             (StatusCode::NOT_FOUND, "item_not_found")
@@ -1042,6 +1049,9 @@ fn provider_status_and_kind(error: &BitwardenClientError) -> (StatusCode, &'stat
         BitwardenClientError::Api(BitwardenApiError::UnsupportedSharedItem) => {
             (StatusCode::UNPROCESSABLE_ENTITY, "unsupported_shared_item")
         }
+        BitwardenClientError::Api(BitwardenApiError::RefreshThrottled) => {
+            (StatusCode::SERVICE_UNAVAILABLE, "upstream_backoff")
+        }
         BitwardenClientError::Api(BitwardenApiError::Http(_)) => {
             (StatusCode::BAD_GATEWAY, "upstream_http")
         }
@@ -1055,11 +1065,13 @@ fn provider_status_and_kind(error: &BitwardenClientError) -> (StatusCode, &'stat
         | BitwardenClientError::Cipher(
             CipherError::Crypto(_) | CipherError::NoExtractableFields { .. },
         ) => (StatusCode::INTERNAL_SERVER_ERROR, "crypto"),
-        BitwardenClientError::KeyDerivation(_) => {
+        BitwardenClientError::Api(BitwardenApiError::UnlockTaskFailed)
+        | BitwardenClientError::KeyDerivation(_) => {
             (StatusCode::INTERNAL_SERVER_ERROR, "key_derivation")
         }
         BitwardenClientError::Api(
             BitwardenApiError::UnsupportedKdfType { .. }
+            | BitwardenApiError::InvalidKdfMemoryLimit
             | BitwardenApiError::MissingKdfParameter { .. },
         ) => (StatusCode::INTERNAL_SERVER_ERROR, "kdf_parameters"),
         BitwardenClientError::Api(
@@ -1092,6 +1104,9 @@ fn public_error_message(error_kind: &str) -> &'static str {
         "unsupported_shared_item" => "shared organization Bitwarden items are not supported",
         "upstream_http" => "Bitwarden-compatible upstream request failed",
         "upstream_status" => "Bitwarden-compatible upstream returned an error status",
+        "upstream_backoff" => {
+            "upstream refresh recently failed; retry after the configured cooldown"
+        }
         "upstream_payload" => "Bitwarden-compatible upstream returned an invalid payload",
         "crypto" => "failed to decrypt selected Bitwarden item",
         "key_derivation" => "failed to unlock Bitwarden vault key",
@@ -1258,6 +1273,7 @@ mod tests {
             http_request_timeout_seconds: 25,
             ca_bundle_file: None,
             resolve_concurrency_limit: 16,
+            argon2_memory_limit_mib: 64,
             webhook_auth_token: Some("test-webhook-token".to_string()),
             webhook_auth_token_file: None,
             auth_policy_file: None,
@@ -1675,7 +1691,7 @@ frW69DSxg6/fcNRyvdTH+twvVnzH
 
         assert!(error
             .to_string()
-            .contains("failed to stat allowed_key_file"));
+            .contains("failed to open allowed_key_file"));
     }
 
     #[test]
@@ -2065,7 +2081,7 @@ frW69DSxg6/fcNRyvdTH+twvVnzH
         });
         assert_eq!(
             provider_status_and_kind(&property_error),
-            (StatusCode::NOT_FOUND, "property_not_found")
+            (StatusCode::UNPROCESSABLE_ENTITY, "property_not_found")
         );
 
         let item_error = BitwardenClientError::from(BitwardenApiError::CipherNotFound);
@@ -2656,7 +2672,7 @@ frW69DSxg6/fcNRyvdTH+twvVnzH
             )
             .await?;
 
-        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
 
         let body = to_bytes(response.into_body(), usize::MAX).await?;
         let body = std::str::from_utf8(&body)?;
@@ -2664,5 +2680,13 @@ frW69DSxg6/fcNRyvdTH+twvVnzH
         assert!(!body.contains("app/database"));
         assert!(!body.contains("DATABASE_URL"));
         Ok(())
+    }
+    #[test]
+    fn provider_config_rejects_invalid_kdf_memory_budget() {
+        for memory_limit in [0, 15, 1025] {
+            let mut args = valid_args();
+            args.argon2_memory_limit_mib = memory_limit;
+            assert!(provider_from_args(&args).is_err());
+        }
     }
 }

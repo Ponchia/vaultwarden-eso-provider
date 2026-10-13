@@ -6,6 +6,19 @@ exposed through a single origin); **Bitwarden Cloud Password Manager** is a
 supported second target through the split-endpoint mode. Bitwarden Secrets
 Manager (`bws`) is not in scope and is not available in Vaultwarden in any case.
 
+## Release qualification
+
+The published `v0.4.0` image has a known Argon2 salt-preprocessing defect.
+The corrected path and independently generated regression vectors are on
+unreleased `main`; PBKDF2 uses a different salt path. Do not interpret old
+backend smoke records as evidence of working Argon2 accounts.
+
+Current-source CI includes an independently bootstrapped Vaultwarden 1.37.4
+backend with PBKDF2 and Argon2 accounts and an actual ESO 2.12.0 lifecycle test.
+The workflow's exact-head result is the evidence; it does not validate arbitrary
+backend versions, shared organization items, Cloud accounts or release images.
+See [testing](live-testing.md) and [crypto notes](crypto-notes.md).
+
 ## Endpoint Modes
 
 Two endpoint layouts are supported.
@@ -94,7 +107,7 @@ The latest Vaultwarden live verification environment used:
 Implemented:
 
 - User API-key login with master-password unlock data.
-- PBKDF2-SHA256 and Argon2id account KDFs.
+- PBKDF2-SHA256; corrected Argon2id support on unreleased `main`.
 - Authenticated Bitwarden encrypted strings.
 - Login, secure-note notes, custom fields, TOTP fields, and SSH key fields.
 - Individual vault item sync against single-origin and split endpoint layouts.

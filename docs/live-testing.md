@@ -1,11 +1,37 @@
 # Live Testing
 
-The normal CI suite uses deterministic fixtures and local fake servers for both
-single-origin and split endpoint layouts. Live tests are skipped unless
-`BWESO_TEST_LIVE=true` and all required `BWESO_TEST_*` environment variables are
-set. The test intentionally does not fall back to runtime `BWESO_*` variables,
-so a developer shell configured for a real provider deployment cannot
-accidentally run the live test against production credentials.
+## Disposable interoperability CI
+
+`.github/workflows/integration.yml` runs the current Rust binary against a
+digest-pinned Vaultwarden 1.37.4 service. Independent Python cryptography creates
+fresh PBKDF2 and Argon2id accounts, API keys and encrypted per-item-key fixtures.
+The check covers single/whole-item reads, Unicode and multiline fields, token
+and selector denials, rotation, missing properties, source trash and log
+redaction. No production account or GitHub secret is required.
+
+A pinned kind cluster runs ESO 2.12.0. Both `Delete` and `Retain` targets must
+survive a missing-property error, receive rotation and follow their distinct
+policies when the actual source item is trashed. The fixture accepts only its
+named disposable CI context. Namespace and cluster cleanup run on failure too.
+The runner-local provider is not a release artifact or a Helm deployment, so
+release chart/image testing below remains necessary.
+
+Python dependencies in `scripts/requirements-integration.txt` are fixture-only;
+they are not part of the Rust image. The script can also target an explicitly
+disposable loopback Vaultwarden without kind:
+
+```bash
+python3 -m venv /tmp/bweso-interop-venv
+/tmp/bweso-interop-venv/bin/pip install -r scripts/requirements-integration.txt
+cargo build --locked -p vaultwarden-eso-provider
+/tmp/bweso-interop-venv/bin/python scripts/vaultwarden-smoke.py \
+  --url http://127.0.0.1:8081 --binary target/debug/vaultwarden-eso-provider
+```
+
+It creates accounts and items: never aim it at a real vault, even through a
+loopback tunnel. Normal unit/fake-server tests still cover failure cases and
+split endpoint layouts. Tests below that use caller-provided accounts remain
+opt-in and are not silently substituted for disposable CI.
 
 ## Direct Provider Test
 
@@ -85,8 +111,10 @@ Required:
 - `kubectl`, `helm`, `jq`, `curl`, `openssl`, and `cargo`.
 - External Secrets Operator already installed in the target cluster.
 - A pushed image tag for the webhook.
-- Live test credentials through the `BWESO_TEST_*` variables above, or the
-  equivalent runtime `BWESO_*` variables.
+- `BWESO_TEST_LIVE=true`, explicit `BWESO_E2E_KUBE_CONTEXT`, and dedicated
+  credentials through `BWESO_TEST_*`. Runtime `BWESO_*` credentials are not
+  silently reused. The script refuses to adopt an existing namespace and only
+  cleans a namespace it successfully created.
 
 The smoke test installs the chart with a ConfigMap-backed selector policy by
 default (`BWESO_E2E_POLICY_MODE=configmap`). The ConfigMap initially contains
@@ -114,7 +142,7 @@ The normal path is to push to `main` and let CI pass. Run the Release workflow
 only when a maintainer explicitly asks for a release or for a commit-tagged
 image for live smoke testing. The release workflow builds amd64 and arm64 on
 native runners and assembles the multi-arch manifest without QEMU emulation.
-Regular CI only runs a fast Dockerfile check; it does not publish an image for
+Regular CI checks and builds the Dockerfile but does not publish an image for
 every commit.
 
 If the GHCR package is private and was created manually before the workflow was
@@ -125,7 +153,8 @@ in place, grant the repository `Write` access under the package settings'
 Example with a private GHCR image:
 
 ```bash
-export BWESO_E2E_KUBE_CONTEXT="<your-cluster-context>"
+export BWESO_TEST_LIVE=true
+export BWESO_E2E_KUBE_CONTEXT="<your-test-cluster-context>"
 export BWESO_E2E_IMAGE_TAG="$(git rev-parse --short=12 HEAD)"
 export BWESO_E2E_GHCR_TOKEN="$(gh auth token)"
 export BWESO_TEST_SINGLE_ORIGIN_URL="https://vaultwarden.example.com"
@@ -145,6 +174,8 @@ For a tagged public release, set the OCI chart explicitly so the smoke test
 does not use the local checkout:
 
 ```bash
+# v0.4.0's known legacy behavior; do not use this override for a new release.
+export BWESO_E2E_EXPECT_MISSING_PROPERTY_STATUS=404
 export BWESO_E2E_IMAGE_TAG="0.4.0"
 export BWESO_E2E_CHART_REF="oci://ghcr.io/ponchia/charts/vaultwarden-eso-provider"
 export BWESO_E2E_CHART_VERSION="0.4.0"

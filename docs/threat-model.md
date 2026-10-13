@@ -134,6 +134,15 @@ webhook — are necessary, not optional.
   outage, but it never masks authentication, payload-validation, KDF, or
   decryption failures.
 
+## Operational recovery
+
+A valid last-known-good policy can retain access after a malformed or empty
+reload. Removing a mounted policy is not an emergency revoke-all mechanism.
+Projection/reload latency and cache freshness also delay changes. Follow the
+[failure and recovery runbook](operations/failure-and-recovery.md), including
+per-replica verification, upstream credential rotation and separate handling of
+already-copied Kubernetes Secrets. No independent security audit is claimed.
+
 ## Open Questions
 
 - Whether the Bitwarden Password Manager SDK internals (the open-source Rust

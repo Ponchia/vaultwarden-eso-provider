@@ -60,9 +60,13 @@ url_host() {
   printf '%s' "${raw}"
 }
 
+truthy "${BWESO_TEST_LIVE:-}" || fail "set BWESO_TEST_LIVE=true for an explicitly selected test account"
+umask 077
+
 kubectl_cmd=(kubectl)
 helm_cmd=(helm)
-kube_context="$(first_env BWESO_E2E_KUBE_CONTEXT KUBE_CONTEXT || true)"
+kube_context="$(first_env BWESO_E2E_KUBE_CONTEXT || true)"
+[[ -n "${kube_context}" ]] || fail "set BWESO_E2E_KUBE_CONTEXT explicitly; the current context is not a safe default"
 if [[ -n "${kube_context}" ]]; then
   kubectl_cmd+=(--context "${kube_context}")
   helm_cmd+=(--kube-context "${kube_context}")
@@ -76,7 +80,8 @@ require_cmd curl
 require_cmd openssl
 
 namespace="$(first_env BWESO_E2E_NAMESPACE || true)"
-namespace="${namespace:-bweso-live-smoke}"
+namespace="${namespace:-bweso-live-smoke-$(date +%s)-${RANDOM}}"
+namespace_created=false
 release="$(first_env BWESO_E2E_RELEASE || true)"
 release="${release:-bweso}"
 image_repository="$(first_env BWESO_E2E_IMAGE_REPOSITORY || true)"
@@ -104,29 +109,29 @@ fi
 
 single_origin_url="$(
   first_env \
-    BWESO_TEST_SINGLE_ORIGIN_URL BWESO_SINGLE_ORIGIN_URL || true
+    BWESO_TEST_SINGLE_ORIGIN_URL || true
 )"
 identity_url="$(
   first_env \
-    BWESO_TEST_IDENTITY_URL BWESO_IDENTITY_URL || true
+    BWESO_TEST_IDENTITY_URL || true
 )"
-api_url="$(first_env BWESO_TEST_API_URL BWESO_API_URL || true)"
-client_id="$(first_env BWESO_TEST_CLIENT_ID BWESO_CLIENT_ID || true)"
-client_secret="$(first_env BWESO_TEST_CLIENT_SECRET BWESO_CLIENT_SECRET || true)"
-master_password="$(first_env BWESO_TEST_MASTER_PASSWORD BWESO_MASTER_PASSWORD || true)"
+api_url="$(first_env BWESO_TEST_API_URL || true)"
+client_id="$(first_env BWESO_TEST_CLIENT_ID || true)"
+client_secret="$(first_env BWESO_TEST_CLIENT_SECRET || true)"
+master_password="$(first_env BWESO_TEST_MASTER_PASSWORD || true)"
 network_policy_enabled="$(first_env BWESO_E2E_NETWORK_POLICY_ENABLED || true)"
 host_alias_ip="$(first_env BWESO_E2E_HOST_ALIAS_IP || true)"
 host_alias_hostname="$(first_env BWESO_E2E_HOST_ALIAS_HOSTNAME || true)"
 
 if [[ -n "${single_origin_url}" && (-n "${identity_url}" || -n "${api_url}") ]]; then
-  fail "use either BWESO_TEST_SINGLE_ORIGIN_URL/BWESO_SINGLE_ORIGIN_URL or split identity/api URLs, not both"
+  fail "use either BWESO_TEST_SINGLE_ORIGIN_URL or split identity/api URLs, not both"
 fi
 if [[ -z "${single_origin_url}" && (-z "${identity_url}" || -z "${api_url}") ]]; then
   fail "set a single-origin URL or both split endpoint URLs"
 fi
-[[ -n "${client_id}" ]] || fail "set BWESO_TEST_CLIENT_ID or BWESO_CLIENT_ID"
-[[ -n "${client_secret}" ]] || fail "set BWESO_TEST_CLIENT_SECRET or BWESO_CLIENT_SECRET"
-[[ -n "${master_password}" ]] || fail "set BWESO_TEST_MASTER_PASSWORD or BWESO_MASTER_PASSWORD"
+[[ -n "${client_id}" ]] || fail "set BWESO_TEST_CLIENT_ID"
+[[ -n "${client_secret}" ]] || fail "set BWESO_TEST_CLIENT_SECRET"
+[[ -n "${master_password}" ]] || fail "set BWESO_TEST_MASTER_PASSWORD"
 if [[ -n "${network_policy_enabled}" ]]; then
   case "${network_policy_enabled}" in
   true | false) ;;
@@ -159,7 +164,7 @@ stop_port_forward() {
 cleanup() {
   stop_port_forward
   rm -rf "${tmp_dir}"
-  if [[ "${cleanup_namespace}" == true ]]; then
+  if [[ "${cleanup_namespace}" == true && "${namespace_created}" == true ]]; then
     log "cleaning namespace ${namespace}"
     "${kubectl_cmd[@]}" delete namespace "${namespace}" --ignore-not-found=true --wait=false >/dev/null
     local deadline=$((SECONDS + 120))
@@ -170,7 +175,7 @@ cleanup() {
       sleep 2
     done
     log "namespace ${namespace} is still terminating; inspect it manually if it does not disappear"
-  else
+  elif [[ "${namespace_created}" == true ]]; then
     log "leaving namespace ${namespace} because BWESO_E2E_KEEP_NAMESPACE is set"
   fi
 }
@@ -244,7 +249,10 @@ apply_policy_configmap() {
 }
 
 log "creating namespace ${namespace}"
-"${kubectl_cmd[@]}" create namespace "${namespace}" --dry-run=client -o yaml | "${kubectl_cmd[@]}" apply -f - >/dev/null
+# Creation must succeed without adopting an existing namespace. The EXIT
+# trap may delete only the namespace this invocation actually created.
+"${kubectl_cmd[@]}" create namespace "${namespace}" >/dev/null
+namespace_created=true
 if [[ "${policy_mode}" == "configmap" ]]; then
   log "creating selector-policy ConfigMap ${policy_configmap}"
   apply_policy_configmap false
@@ -261,8 +269,7 @@ if [[ -n "${ghcr_token}" ]]; then
 EOF
   "${kubectl_cmd[@]}" -n "${namespace}" create secret generic "${pull_secret}" \
     --type=kubernetes.io/dockerconfigjson \
-    --from-file=.dockerconfigjson="${tmp_dir}/dockerconfigjson" \
-    --dry-run=client -o yaml | "${kubectl_cmd[@]}" apply -f - >/dev/null
+    --from-file=.dockerconfigjson="${tmp_dir}/dockerconfigjson" >/dev/null
 fi
 
 printf '%s' "${client_id}" >"${tmp_dir}/client-id"
@@ -277,8 +284,7 @@ log "creating webhook credential Secret"
   --from-file=client-id="${tmp_dir}/client-id" \
   --from-file=client-secret="${tmp_dir}/client-secret" \
   --from-file=master-password="${tmp_dir}/master-password" \
-  --from-file=webhook-token="${tmp_dir}/webhook-token" \
-  --dry-run=client -o yaml | "${kubectl_cmd[@]}" apply -f - >/dev/null
+  --from-file=webhook-token="${tmp_dir}/webhook-token" >/dev/null
 "${kubectl_cmd[@]}" -n "${namespace}" label secret "${credentials_secret}" \
   external-secrets.io/type=webhook --overwrite >/dev/null
 
@@ -422,7 +428,12 @@ record_direct_metric_observations() {
   [[ "${status}" == "200" ]] || fail "direct successful resolve returned HTTP ${status}, expected 200"
 
   status="$(direct_resolve_status "${item_key}" "${missing_property}" "${error_body}" "${error_response}")"
-  [[ "${status}" == "404" ]] || fail "direct missing-property resolve returned HTTP ${status}, expected 404"
+  local expected_missing_property="${BWESO_E2E_EXPECT_MISSING_PROPERTY_STATUS:-422}"
+  case "${expected_missing_property}" in
+  422 | 404) ;;
+  *) fail "missing-property expected status must be 422 (current) or 404 (explicit legacy release test)" ;;
+  esac
+  [[ "${status}" == "${expected_missing_property}" ]] || fail "direct missing-property resolve returned HTTP ${status}, expected ${expected_missing_property}"
   assert_error_response_redacted "${error_response}" "${item_key}" "${missing_property}"
 
   status="$(direct_resolve_status "${denied_item}" "${property}" "${denied_body}" "${denied_response}")"
@@ -486,7 +497,7 @@ spec:
         }
       result:
         jsonPath: "$.data.value"
-      timeout: 10s
+      timeout: 90s
 ---
 apiVersion: external-secrets.io/v1
 kind: SecretStore
@@ -514,7 +525,7 @@ spec:
         }
       result:
         jsonPath: "$.data"
-      timeout: 10s
+      timeout: 90s
 ---
 apiVersion: external-secrets.io/v1
 kind: ExternalSecret

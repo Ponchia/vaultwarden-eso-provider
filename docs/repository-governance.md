@@ -8,9 +8,8 @@ Provider.
 - Visibility: public.
 - Issues: enabled.
 - Discussions: optional; enable only if issue traffic becomes noisy.
-- Wiki: disabled. Keep docs in Git. If the wiki is enabled later, use it only
-  as a curated mirror or navigation front door; see
-  [`github-wiki.md`](github-wiki.md).
+- Wiki: disabled. Keep one reviewed documentation source in Git rather than
+  duplicating instructions across a wiki and the repository.
 - Projects: disabled unless there is an active public roadmap board.
 - Merge strategy: squash merge enabled, merge commits disabled, rebase merge
   disabled.
@@ -50,6 +49,8 @@ Protect `main` with these rules:
   - `Docker`
   - `CodeQL Rust`
   - `CodeQL Actions`
+  - `Minimum Rust`
+  - `Vaultwarden and ESO`
 - Include administrators.
 - Block force pushes.
 - Block deletions.
@@ -69,20 +70,12 @@ once external contribution volume justifies them.
 
 ## OpenSSF Scorecard Findings
 
-Treat Scorecard findings as triage signals, not automatic policy. The following
-open findings are accepted until the repository has more project history or a
-second active maintainer:
-
-- `Maintained`: the repository is public but still younger than 90 days.
-- `Code-Review`: there are not yet enough approved pull requests for Scorecard
-  to assign credit.
-- `Branch-Protection`: requiring one approving review or CODEOWNERS approval
-  would block a solo maintainer while administrator enforcement is enabled.
-- `CII-Best-Practices`: pursue the OpenSSF Best Practices Badge before `v1.0.0`;
-  it is not a `v0.3.0` release blocker.
-
-Dismiss these alerts in GitHub code scanning with this rationale after each
-Scorecard SARIF upload, unless the repository maintainer model has changed.
+Use Scorecard findings as current review inputs, not automatic dismissal rules.
+Read the actual result and repository settings. Do not carry historical claims
+such as "younger than 90 days" into a later review. The solo-maintainer review
+constraint above is explicit; it is not equivalent to independent code review.
+Record any accepted risk with its reason and revisit it when maintainers or
+project usage change. Badges do not replace security or compatibility evidence.
 
 ## Release Permissions
 

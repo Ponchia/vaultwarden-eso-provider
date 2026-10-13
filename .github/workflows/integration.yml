@@ -1,0 +1,105 @@
+name: Interoperability
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "43 5 * * 2"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: interop-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  vaultwarden-eso:
+    name: Vaultwarden and ESO
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      KIND_VERSION: v0.33.0
+      KIND_SHA256: aee6151561422756b764a4ae28e7f44cda5af5a9eead3cc9985112b1de8d8e0d
+      KIND_IMAGE: kindest/node:v1.35.8@sha256:07b2536e30b803ed61d1677a79df6115f798ce64c80f9e22f6ed45afd09323c0
+      ESO_CHART_VERSION: 2.12.0
+    services:
+      vaultwarden:
+        image: vaultwarden/server:1.37.4@sha256:efb3cde962015fcc036b2ea625242248611943b27212ebf4392841fb30fad055
+        ports:
+          - 8081:80
+        env:
+          SIGNUPS_ALLOWED: "true"
+          SIGNUPS_VERIFY: "false"
+          WEB_VAULT_ENABLED: "false"
+          I_REALLY_WANT_VOLATILE_STORAGE: "true"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          toolchain: 1.98.1
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # v2
+        with:
+          prefix-key: interop
+          cache-on-failure: true
+
+      - name: Set isolated kubeconfig
+        run: echo "KUBECONFIG=${RUNNER_TEMP}/bweso-interop.kubeconfig" >> "${GITHUB_ENV}"
+
+      - name: Build current source
+        run: cargo build --locked -p vaultwarden-eso-provider
+
+      - name: Install independent fixture tooling
+        run: |
+          python3 -m venv "${RUNNER_TEMP}/interop-venv"
+          "${RUNNER_TEMP}/interop-venv/bin/pip" install --disable-pip-version-check -r scripts/requirements-integration.txt
+          "${RUNNER_TEMP}/interop-venv/bin/python" -m py_compile scripts/vaultwarden-smoke.py
+
+      - name: Install Helm
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5
+        with:
+          version: v4.1.4
+
+      - name: Create disposable kind cluster
+        run: |
+          curl --fail --silent --show-error --location "https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-linux-amd64" -o "${RUNNER_TEMP}/kind"
+          printf '%s  %s\n' "${KIND_SHA256}" "${RUNNER_TEMP}/kind" | sha256sum --check
+          chmod +x "${RUNNER_TEMP}/kind"
+          echo "${RUNNER_TEMP}" >> "${GITHUB_PATH}"
+          "${RUNNER_TEMP}/kind" create cluster --name bweso-interop --image "${KIND_IMAGE}" --kubeconfig "${KUBECONFIG}" --wait 120s
+          docker cp bweso-interop-control-plane:/usr/bin/kubectl "${RUNNER_TEMP}/kubectl"
+          chmod +x "${RUNNER_TEMP}/kubectl"
+
+      - name: Install actual ESO controller
+        run: |
+          helm repo add external-secrets https://charts.external-secrets.io
+          helm install external-secrets external-secrets/external-secrets \
+            --version "${ESO_CHART_VERSION}" --namespace external-secrets \
+            --create-namespace --wait --timeout 180s
+
+      - name: Check both KDFs and actual ESO deletion semantics
+        run: |
+          gateway="$(docker inspect bweso-interop-control-plane --format '{{(index .NetworkSettings.Networks "kind").Gateway}}')"
+          if [ -z "${gateway}" ]; then
+            network_id="$(docker network inspect kind --format '{{.Id}}')"
+            gateway="$(ip -j -4 address show dev "br-${network_id:0:12}" | jq -r '.[0].addr_info[] | select(.scope == "global") | .local' | head -1)"
+          fi
+          test -n "${gateway}"
+          "${RUNNER_TEMP}/interop-venv/bin/python" scripts/vaultwarden-smoke.py \
+            --binary target/debug/vaultwarden-eso-provider \
+            --kubeconfig "${KUBECONFIG}" --kind-gateway "${gateway}"
+
+      - name: Remove disposable cluster
+        if: always()
+        run: |
+          if [ -x "${RUNNER_TEMP}/kind" ]; then
+            "${RUNNER_TEMP}/kind" delete cluster --name bweso-interop --kubeconfig "${KUBECONFIG}"
+          fi

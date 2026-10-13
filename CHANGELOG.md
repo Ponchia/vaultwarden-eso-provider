@@ -10,6 +10,28 @@ before release so generated notes land in the right category.
 
 ## Unreleased
 
+- Throttle failed refresh bursts even with a cold cache or authentication
+  failure; cooldown responses fail closed and never grant stale reads.
+- Raise the declared Rust minimum to 1.89 to match the selected AES dependency,
+  and add a locked all-target build check on that minimum compiler.
+
+- Add independently bootstrapped Vaultwarden/ESO CI without private credentials.
+- Require explicit test account opt-in/context for release smoke testing; never
+  adopt or clean an existing namespace or persist credentials in apply metadata.
+- Consolidate operator and release documentation and check local links in CI.
+
+- Correct Password Manager Argon2 salt preprocessing with independently
+  generated interoperability vectors; the published v0.4.0 path is affected.
+- Move KDF work off async workers and enforce an operator Argon2 memory budget.
+- Return 422 for a missing property; reserve 404 for actual item absence.
+- Reject malformed sync responses without a ciphers array instead of treating
+  them as an empty vault, and exclude soft-deleted items from lookup.
+- Propagate name-lookup decryption failures rather than report false absence.
+- Reject duplicate single-property custom fields; wipe owned plaintext models
+  and temporary unlock buffers on drop.
+- Bound policy-file reads directly instead of relying on a preceding stat.
+- Increase default pod memory to 256 MiB and ESO example timeouts to 90 seconds.
+
 - Added capability-scoped webhook authentication: a Secret-mounted JSON policy
   can define multiple bearer-token sets with independent exact/prefix selector
   allowlists. Scoped tokens are intersected with the existing global selector

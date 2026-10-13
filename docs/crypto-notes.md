@@ -45,3 +45,52 @@ API-key login and per-cipher key handling are implemented. Organization key
 unwrap is separate work and must receive fixture tests plus live Vaultwarden and
 Bitwarden Cloud verification before support is advertised. Selected shared
 organization items fail explicitly in the current release line.
+
+## Argon2 interoperability regression (unreleased)
+
+The `v0.4.0` Argon2 path incorrectly uses the normalized email directly as the
+Argon2 salt. Bitwarden Password Manager instead uses the SHA-256 digest of that
+normalized email. PBKDF2 still uses the normalized email directly. This was a
+compatibility failure, not evidence that the Argon2 primitive itself was weak.
+`main` corrects the derivation; do not claim the fix is in a published image
+until the next release is verified.
+
+Regression vectors use synthetic inputs and were independently generated with
+`argon2-cffi` 25.1.0 / libargon2, not with this repository's Rust code. Reproduce
+the original account fixture with:
+
+```python
+import base64
+import hashlib
+from argon2.low_level import Type, hash_secret_raw
+
+salt = hashlib.sha256(" User@Example.COM ".strip().lower().encode()).digest()
+key = hash_secret_raw(
+    b"correct horse battery staple", salt,
+    time_cost=2, memory_cost=16 * 1024, parallelism=1,
+    hash_len=32, type=Type.ID, version=19,
+)
+assert base64.b64encode(key).decode() == (
+    "aEgjyL6m4hJR5qk6Qow5zqboJtfdI2zu3lSqNkgDE7A="
+)
+```
+
+Additional fixtures cover independent inputs, multiple lanes, a 64 MiB cost,
+and a Unicode password. The protocol behavior was checked against
+[Bitwarden's KDF implementation at an immutable revision](https://github.com/bitwarden/sdk-internal/blob/229c5b9a897b670ca988b6c03ee8a3c5e90128a6/crates/bitwarden-crypto/src/keys/kdf.rs).
+No upstream implementation was vendored or linked.
+
+The provider's Argon2 allocation budget defaults to 64 MiB and is checked before
+key derivation. `BWESO_ARGON2_MEMORY_LIMIT_MIB` and Helm
+`config.argon2MemoryLimitMiB` accept 16–1024 MiB. Increase the pod memory limit
+as well as this budget for accounts with larger costs. Leave headroom for the
+HTTP response, encrypted cache, decrypted fields and allocator overhead; a KDF
+budget is not a whole-process memory limit. The chart defaults to 256 MiB.
+
+KDF work runs on a blocking worker rather than a Tokio async worker. A permit
+limits each client to one active unlock and stays inside the blocking task if
+the caller is cancelled. Plaintext cipher fields, temporary unwrapped cipher
+keys and the collected token-response buffer are wiped on drop where owned by
+this implementation. HTTP/framework buffers and process memory are not an
+independent security boundary. This project has not received an independent
+cryptographic audit.

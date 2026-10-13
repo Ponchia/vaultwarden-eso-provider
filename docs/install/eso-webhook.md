@@ -1,5 +1,12 @@
 # ESO Webhook Install
 
+**Version boundary:** `v0.4.0` is the published release. Capability-scoped auth,
+bounded stale cache, the corrected Argon2 path, memory budget and HTTP 422 for
+missing properties described below are unreleased on `main`. Use a matching
+candidate chart and image when testing source changes. Do not combine a
+checkout chart with an old image and assume new settings are implemented.
+See [compatibility](../compatibility.md) before choosing a release.
+
 Install External Secrets Operator first. This project provides the Bitwarden
 Password Manager and Vaultwarden resolver behind ESO's generic webhook provider.
 
@@ -262,7 +269,7 @@ spec:
         }
       result:
         jsonPath: "$.data.value"
-      timeout: 10s
+      timeout: 90s
 ```
 
 The webhook response contains the resolved secret value. The chart exposes the
@@ -381,9 +388,22 @@ Common redacted error classes:
 
 ## Resource Sizing
 
-The default chart resources are intentionally small and are suitable for
-PBKDF2-backed accounts plus low-throughput sync. Bitwarden Argon2id accounts
-can require substantially more memory during unlock. If the provider exits
-during unlock or Kubernetes reports OOM kills, raise `resources.requests.memory`
-and `resources.limits.memory` to match the account's configured Argon2 memory
-cost with operational headroom.
+Current-source defaults are a 64 MiB Argon2 allocation budget and 256 MiB pod
+memory limit. Set `config.argon2MemoryLimitMiB` for larger account costs and raise
+`resources.limits.memory` with operational headroom. Above-budget accounts fail
+before KDF allocation. This does not bound total process memory: encrypted sync
+responses, transient response buffers and decrypted fields also use memory.
+
+CPU limits affect cold unlock latency even when memory is adequate. Example
+ESO webhook timeouts are 90 seconds to accommodate the two upstream deadlines
+and KDF work; measure the cold path for your account and pod resources. Never
+reduce an account's KDF simply to fit a pod limit. See
+[failure and recovery](../operations/failure-and-recovery.md).
+
+## Refresh failure cooldown
+
+On unreleased `main`, `config.cacheRefreshRetryIntervalSeconds` also throttles
+failed refreshes when no stale snapshot is usable, including cold-cache and
+authentication failures. During the cooldown, resolves fail closed with HTTP
+503 `upstream_backoff`. This setting does not enable stale reads. The default
+is 15 seconds; set it to `0` only to deliberately retry every resolve.
