@@ -50,13 +50,16 @@ config:
   # Or set both identityUrl and apiUrl for Bitwarden Cloud/split endpoints.
   identityUrl: ""
   apiUrl: ""
+  # Maximum accepted Argon2 account memory cost. Increase the pod memory
+  # limit with this value, retaining headroom for HTTP and cached vault data.
+  argon2MemoryLimitMiB: 64
   cacheTtlSeconds: 60
   # Additional time beyond cacheTtlSeconds during which a previous successful
   # sync can be served after transport errors, HTTP 408/429, or HTTP 5xx.
   # 0 preserves fail-closed behavior for every upstream refresh failure.
   cacheStaleIfErrorSeconds: 0
-  # Minimum delay between upstream refresh attempts while stale data is served.
-  # 0 retries on every resolve request.
+  # Cooldown after any failed refresh, even without an eligible stale cache.
+  # This does not enable stale reads. 0 retries on every resolve request.
   cacheRefreshRetryIntervalSeconds: 15
   httpConnectTimeoutSeconds: 5
   httpRequestTimeoutSeconds: 25
@@ -192,7 +195,7 @@ resources:
     ephemeral-storage: 16Mi
   limits:
     cpu: 250m
-    memory: 128Mi
+    memory: 256Mi
     ephemeral-storage: 64Mi
 
 nodeSelector: {}

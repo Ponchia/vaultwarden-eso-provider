@@ -20,6 +20,7 @@ code.
 | Goal | Document |
 | --- | --- |
 | Observe health, metrics, and alerts | [Observability](operations/observability.md) |
+| Diagnose failures, revocation and rollback | [Failure and recovery](operations/failure-and-recovery.md) |
 | Plan Secret migrations | [Migration runbook](operations/migration-runbook.md) |
 | Understand restarts and rollouts | [Restart behavior](operations/restarts.md) |
 | Use ESO manifests | [ESO examples](../deploy/eso/README.md) |
@@ -33,7 +34,6 @@ code.
 | Prepare a public release | [Public release checklist](public-release-checklist.md) |
 | Track user-facing changes | [Changelog](../CHANGELOG.md) |
 | Govern repository settings | [Repository governance](repository-governance.md) |
-| Decide whether to use GitHub Wiki | [GitHub Wiki strategy](github-wiki.md) |
 | Track planned work | [Roadmap](roadmap.md) |
 | Review architecture decisions | [Architecture decisions](decisions) |
 

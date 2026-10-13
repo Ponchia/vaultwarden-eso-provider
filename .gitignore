@@ -22,3 +22,8 @@
 /.playwright-cli/
 /.scannerwork/
 /.semgrep/
+
+# Disposable Python integration tooling
+__pycache__/
+*.py[cod]
+.venv/

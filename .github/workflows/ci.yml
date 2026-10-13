@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
@@ -30,10 +30,10 @@ jobs:
           components: clippy, rustfmt
 
       - name: Cache cargo
-        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # v2
 
       - name: Install cargo-llvm-cov
-        uses: taiki-e/install-action@c44f6b046f1c29ae5918b1e0bfdbb2f1813836fd # v2
+        uses: taiki-e/install-action@ab6895351a88b908e96a4697860d4ffea5e57dbe # v2
         with:
           tool: cargo-llvm-cov@0.8.6
 
@@ -46,6 +46,21 @@ jobs:
       - name: Test with coverage guard
         run: cargo llvm-cov --locked --workspace --all-targets --fail-under-lines 80 --summary-only
 
+  msrv:
+    name: Minimum Rust
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Install minimum supported Rust
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          toolchain: 1.89.0
+      - name: Check the locked workspace on its declared minimum
+        run: |
+          rustc +1.89.0 --version
+          cargo +1.89.0 check --locked --workspace --all-targets
+
   helm:
     name: Helm
     runs-on: ubuntu-latest
@@ -53,7 +68,7 @@ jobs:
       HELM_VERSION: v4.1.4
     steps:
       - name: Checkout
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Install Helm
         uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5
@@ -104,6 +119,12 @@ jobs:
           --set metrics.serviceMonitor.enabled=true
           --set-string 'metrics.serviceMonitor.labels.release=prometheus'
 
+      - name: Validate live-smoke safety contracts
+        run: bash scripts/live-smoke-contracts.sh
+
+      - name: Validate local documentation links
+        run: python3 scripts/check-doc-links.py
+
       - name: Validate documentation
         run: npx --yes markdownlint-cli2@0.22.1 '**/*.md'
 
@@ -123,7 +144,7 @@ jobs:
       GITLEAKS_LINUX_X64_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
     steps:
       - name: Checkout
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
 
@@ -153,7 +174,7 @@ jobs:
           toolchain: 1.98.1
 
       - name: Cache cargo
-        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # v2
         with:
           prefix-key: security-cargo-deny
 
@@ -180,10 +201,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
 
       - name: Check Dockerfile
         run: docker buildx build --check .

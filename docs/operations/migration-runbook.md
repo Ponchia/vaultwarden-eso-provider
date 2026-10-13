@@ -49,7 +49,9 @@ Leave these with their existing owners unless you have a separate design:
    inline `selectorPolicy.allowedKeys` / `selectorPolicy.allowedKeyPrefixes`
    only for static policy that can wait for a provider rollout.
 
-5. Choose the webhook-auth model. If one provider serves multiple trust
+5. Choose the webhook-auth model supported by the deployed release. Scoped
+   authentication is unreleased on `main`, not available in `v0.4.0`.
+   If one provider serves multiple trust
    boundaries, configure `auth.scopedPolicy` with one capability and token per
    boundary. Otherwise, use the legacy global token.
 
@@ -106,8 +108,9 @@ Leave these with their existing owners unless you have a separate design:
 - `creationPolicy: Merge` updates an existing Secret but does not create a
   missing target Secret. Use `Orphan` for migration-style Secrets that must be
   recreated after accidental deletion.
-- `deletionPolicy: Retain` keeps the target Secret if the ExternalSecret is
-  removed.
+- `deletionPolicy: Retain` preserves the target when its remote source disappears.
+  Deleting the ExternalSecret is separate: `creationPolicy: Orphan` avoids an
+  owner reference; `Owner` can cause Kubernetes to garbage-collect the target.
 - `template.mergePolicy: Merge` keeps template-only data from replacing
   provider-sourced data.
 - Plain `username` and `password` properties select Bitwarden login fields.
