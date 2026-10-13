@@ -97,31 +97,37 @@ categories.
 
 ## Allowed Workflow Actions
 
-Keep the repository Actions policy restricted to GitHub-owned actions plus the
-third-party action SHAs used by CI and release workflows:
+Keep selected-actions policy enabled. GitHub-owned actions are allowed; each
+third-party action must match an explicitly reviewed immutable commit SHA.
+Do not use wildcard allowlists to make a dependency PR pass.
 
-- `aquasecurity/setup-trivy@3fb12ec12f41e471780db15c232d5dd185dcb514`
-- `aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25`
-- `azure/setup-helm@dda3372f752e03dde6b3237bc9431cdc2f7a02a2`
-- `docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f`
-- `docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121`
-- `docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf`
-- `docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd`
-- `dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8`
-- `ossf/scorecard-action@4eaacf0543bb3f2c246792bd56e8cdeffafb205a`
-- `sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6`
-- `softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda`
-- `Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32`
-- `taiki-e/install-action@7be9fd86bd1707236395105d6e9329dd1511a7e1`
+The workflow files are the source of truth for direct action revisions. Inspect
+the proposed action metadata and changes, then add its exact revision to the
+existing repository allowlist **before running the PR checks**. Also review
+transitive actions: the pinned Trivy action invokes
+`aquasecurity/setup-trivy@3fb12ec12f41e471780db15c232d5dd185dcb514`.
 
-`aquasecurity/setup-trivy` is not referenced directly by repository workflows;
-it is the transitive setup action invoked by the pinned Trivy action.
-When Dependabot updates a pinned action SHA, update this allowlist before
-merging so the next workflow run is not blocked by selected-actions policy.
+Read the live allowlist with:
+
+```bash
+gh api repos/Ponchia/vaultwarden-eso-provider/actions/permissions/selected-actions
+```
+
+Preserve unrelated entries and permission flags. Keep old immutable pins while
+supported release branches still reference them. Re-read the policy after a
+change and compare sets rather than list ordering. A blocked workflow can fail
+at startup without creating any required check; the absence of red check runs
+is not a successful validation. Some startup failures cannot be rerun and need
+a new PR commit after the exact pin is admitted.
+
+Update every CodeQL sub-action together (`init`, `analyze`, `upload-sarif`).
+Updating only `init` leaves a mixed-version pipeline. Dependabot groups Actions
+updates to keep those revisions aligned.
 
 ## Dependabot Policy
 
-Dependabot patch-only PRs are safe to merge automatically after CI succeeds.
+Dependabot patch-only PRs may use the existing automated merge workflow only
+after the required checks pass on the current head.
 Minor and major updates stay manual because Rust `0.x` crates can contain API
 changes in semver-minor updates, and Docker/toolchain updates can change clippy
 behavior. Known incompatible RustCrypto block-cipher and reqwest 0.x

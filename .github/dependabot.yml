@@ -6,6 +6,10 @@ updates:
       interval: weekly
     open-pull-requests-limit: 5
     groups:
+      compatible-runtime:
+        patterns: ["*"]
+        exclude-patterns: ["aes", "argon2", "base64", "cbc", "hkdf", "hmac", "pbkdf2", "sha2"]
+        update-types: ["minor", "patch"]
       rustcrypto-kdf:
         patterns:
           - hkdf
@@ -13,6 +17,12 @@ updates:
           - pbkdf2
           - sha2
     ignore:
+      # Crypto/parser 0.x migrations need protocol-vector review, not a
+      # manifest-only update from the nested fuzz workspace.
+      - dependency-name: argon2
+        update-types: ["version-update:semver-minor"]
+      - dependency-name: base64
+        update-types: ["version-update:semver-minor"]
       # aes/cbc 0.x minor releases move between RustCrypto cipher API generations.
       # Revisit as an intentional grouped block-cipher migration.
       - dependency-name: aes
@@ -29,6 +39,10 @@ updates:
 
   - package-ecosystem: cargo
     directory: /crates/bweso-bitwarden/fuzz
+    # The root owns the production dependency graph. The nested workspace
+    # must not open manifest-only root updates without updating Cargo.lock.
+    allow:
+      - dependency-name: libfuzzer-sys
     schedule:
       interval: weekly
     open-pull-requests-limit: 2
@@ -47,6 +61,9 @@ updates:
 
   - package-ecosystem: github-actions
     directory: /
+    groups:
+      actions:
+        patterns: ["*"]
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
