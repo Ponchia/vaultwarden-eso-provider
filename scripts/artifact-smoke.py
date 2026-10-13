@@ -9,14 +9,12 @@ from __future__ import annotations
 import argparse
 from datetime import datetime, timedelta, timezone
 import http.client
-import hashlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import importlib.util
 import ipaddress
 import json
 import os
 import platform
-import re
 from pathlib import Path
 import socket
 import ssl
@@ -25,6 +23,8 @@ import threading
 from typing import Any
 import urllib.parse
 import uuid
+
+from qualification_checks import IdentityError, verify_native_image
 
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
@@ -145,12 +145,7 @@ class HelmProvider:
                                   "--wait", "--timeout", "180s"], timeout=210)
             self.image_id = self.run(self.kube + ["-n", self.namespace, "get", "pod", "-l", "app.kubernetes.io/instance=provider",
                                                "-o", "jsonpath={.items[0].status.containerStatuses[0].imageID}"]).strip()
-            # kind's imported repo name may not be indexed by CRI. Follow the
-            # actual pod's immutable digest through containerd's content store.
-            observed = self.image_id.split("://", 1)[-1].rsplit("@", 1)[-1]
-            require(re.fullmatch(r"sha256:[a-f0-9]{64}", observed) is not None,
-                    "pod image identity is not an immutable digest")
-            self.verify_image_digest(observed, args.image_id)
+            self.verify_image_digest(self.image_id, args.image_id)
             with socket.socket() as sock:
                 sock.bind(("127.0.0.1", 0))
                 self.port = sock.getsockname()[1]
@@ -173,26 +168,12 @@ class HelmProvider:
         return result.stdout
 
     def verify_image_digest(self, observed: str, expected_config: str) -> None:
-        for _ in range(3):
-            if observed == expected_config:
-                return
-            raw = self.run(["docker", "exec", "bweso-interop-control-plane", "ctr", "-n", "k8s.io", "content", "get", observed])
-            require("sha256:" + hashlib.sha256(raw.encode()).hexdigest() == observed,
-                    "container runtime returned mismatching image content")
-            manifest = json.loads(raw)
-            if "config" in manifest:
-                require(manifest["config"]["digest"] == expected_config,
-                        "running pod does not match the built image configuration")
-                return
-            arch = {"aarch64": "arm64", "x86_64": "amd64"}.get(platform.machine())
-            matches = [item for item in manifest.get("manifests", [])
-                       if item.get("platform", {}).get("architecture") == arch
-                       and item.get("platform", {}).get("os") == "linux"]
-            require(len(matches) == 1, "image index did not identify one native Linux manifest")
-            observed = matches[0]["digest"]
-            require(re.fullmatch(r"sha256:[a-f0-9]{64}", observed) is not None,
-                    "image index contains an invalid digest")
-        raise fixture.SmokeFailure("image identity exceeded the supported manifest depth")
+        arch = {"aarch64": "arm64", "x86_64": "amd64"}.get(platform.machine(), "unknown")
+        try:
+            verify_native_image(observed, expected_config, lambda digest: self.run([
+                "docker", "exec", "bweso-interop-control-plane", "ctr", "-n", "k8s.io", "content", "get", digest]).encode(), arch)
+        except IdentityError as error:
+            raise fixture.SmokeFailure(str(error)) from error
 
     def start_forward(self) -> None:
         self.forward = subprocess.Popen(self.kube + ["-n", self.namespace, "port-forward", "--address", "127.0.0.1",

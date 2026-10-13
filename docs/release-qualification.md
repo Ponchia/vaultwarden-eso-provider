@@ -15,8 +15,11 @@ Vaultwarden service; they never use real accounts or a user's email.
 The checks exercise private-CA TLS, file-mounted credentials, item and field
 reads, policy enforcement, source rotation, missing fields versus deletion,
 ESO Delete/Retain, provider restart, target recreation, and a configuration
-upgrade/rollback. A configuration rollback is not evidence of a v0.4.0 binary
-rollback, which must be qualified separately where relevant.
+upgrade/rollback. A separate cross-version test loads the released v0.4.0 image
+by its immutable digest and chart archive by checksum. PBKDF2 must remain
+readable through rollback; the known v0.4.0 Argon2 incompatibility must fail
+without deleting targets, followed by recovery onto the candidate. These are
+fixture acceptance tests, not a promise that every production migration works.
 
 Only an explicit artifact allowlist is uploaded: container archive, extracted
 binary, packaged chart, checksums and a count/status-only qualification record.
@@ -39,5 +42,6 @@ credentials outside every repository with restrictive permissions; revoke test
 access and remove temporary state when the qualification is complete. A browser
 may retain its normal private session; closing a tab is not credential erasure.
 
-The current live Cloud pass and cross-version migration remain tracked in #75
-until actual evidence exists. Independent external review is separate (#76).
+Issue #75 remains open until current artifact qualification and a separate
+live Bitwarden Cloud pass have actual evidence. Independent external review
+is separate (#76).
