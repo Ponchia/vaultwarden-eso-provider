@@ -146,13 +146,17 @@ jobs:
           fi
           python3 scripts/release_bundle.py verify-native --binary "${directory}/provider-linux-${ARCH}" \
             --archive "${archive}" --arch "${ARCH}"
-      - name: Generate candidate runtime SBOM
+      - name: Install Cargo for locked candidate inventory
         if: inputs.release_tag == ''
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
         with:
-          image-ref: ${{ env.QUALIFICATION_IMAGE }}
-          format: spdx-json
-          output: ${{ runner.temp }}/public-artifacts/sbom-linux-${{ matrix.arch }}.spdx.json
+          toolchain: 1.98.1
+      - name: Export locked runtime Cargo inventory
+        if: inputs.release_tag == ''
+        run: |
+          python3 scripts/runtime_sbom.py --binary "${RUNNER_TEMP}/public-artifacts/provider-linux-${ARCH}" \
+            --arch "${ARCH}" --revision "${QUALIFICATION_REVISION}" \
+            --output "${RUNNER_TEMP}/public-artifacts/sbom-linux-${ARCH}.spdx.json"
       - name: Fetch immutable released baseline for migration tests
         run: |
           set -euo pipefail

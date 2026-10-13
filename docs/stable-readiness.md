@@ -28,10 +28,13 @@ retroactively claimed as attachments of the earlier `0.5.0-rc.1` release.
 Candidate Actions artifacts exercise the same native packaging and verify each
 archive's binary against the actual image binary before retention.
 
-An SPDX inventory records scanner findings, not a guarantee that every
-statically linked component has been identified. The notice file covers Cargo
-runtime dependencies for both Linux targets; it is not a legal opinion or a
-security certification.
+An SPDX inventory includes the exact executable checksum and the locked,
+target-filtered normal Cargo dependency graph with registry crate checksums.
+This avoids relying on image scanners that cannot enumerate static Rust
+dependencies. Build-only and dev-only edges are excluded. The graph is declared
+source-dependency evidence, not a byte-level linker inventory or a guarantee
+that every embedded component has been identified. The notices and inventory
+are not a legal opinion or a security certification.
 
 ## Remaining backend evidence
 

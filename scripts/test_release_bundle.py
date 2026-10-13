@@ -35,7 +35,11 @@ class ReleaseBundleTests(unittest.TestCase):
             binary = self.root / ("binary-" + arch)
             binary.write_bytes(self.elf(machine))
             package(binary, self.license, self.notices, self.root / binary_name(self.version, arch), arch)
-            (self.root / f"sbom-linux-{arch}.spdx.json").write_text(json.dumps({"spdxVersion":"SPDX-2.3", "SPDXID":"SPDXRef-DOCUMENT"}))
+            (self.root / f"sbom-linux-{arch}.spdx.json").write_text(json.dumps({
+                "spdxVersion":"SPDX-2.3", "SPDXID":"SPDXRef-DOCUMENT", "name":"provider-linux-" + arch,
+                "packages":[{"SPDXID":"SPDXRef-ProviderBinary", "versionInfo":self.version,
+                             "checksums":[{"algorithm":"SHA256", "checksumValue":hashlib.sha256(binary.read_bytes()).hexdigest()}]},
+                            {"SPDXID":"SPDXRef-Source"}]}))
         write_bundle(self.root, self.version, "a" * 40, "sha256:" + "b" * 64, "sha256:" + "c" * 64)
 
     def test_roundtrip_and_explicit_allowlist(self):
@@ -105,6 +109,20 @@ class ReleaseBundleTests(unittest.TestCase):
         for value in ("../0.5.0", "0.5.0\n", "v0.5.0", "00.5.0", "0.5.0;whoami"):
             with self.assertRaises(ValueError):
                 asset_names(value)
+
+    def test_spdx_must_contain_dependencies_and_matching_binary(self):
+        self.populate()
+        path = self.root / "sbom-linux-amd64.spdx.json"
+        baseline = json.loads(path.read_text())
+        for mode in ("empty", "wrong-binary", "wrong-version", "wrong-platform"):
+            obj = json.loads(json.dumps(baseline))
+            if mode == "empty": obj["packages"] = obj["packages"][:1]
+            elif mode == "wrong-binary": obj["packages"][0]["checksums"][0]["checksumValue"] = "f" * 64
+            elif mode == "wrong-version": obj["packages"][0]["versionInfo"] = "0.4.0"
+            else: obj["name"] = "provider-linux-arm64"
+            path.write_text(json.dumps(obj))
+            with self.assertRaises(ValueError):
+                verify(self.root)
 
     def test_invalid_manifest_digest(self):
         with self.assertRaises(ValueError):

@@ -90,17 +90,30 @@ def asset_names(version: str) -> list[str]:
 
 def inventory(directory: Path, version: str) -> list[dict[str, Any]]:
     result = []
+    member_hashes = {arch: check_archive(directory / binary_name(version, arch), arch) for arch in ARCHES}
+    notices_hash = hashlib.sha256(read_regular(directory / "THIRD-PARTY-LICENSES.txt")).hexdigest()
+    for members in member_hashes.values():
+        require(members["THIRD-PARTY-LICENSES.txt"] == notices_hash,
+                "native archive notices differ from the published notices")
     for name in asset_names(version):
         data = read_regular(directory / name)
         if name.endswith(".spdx.json"):
             sbom = json.loads(data)
+            arch = name.removeprefix("sbom-linux-").removesuffix(".spdx.json")
             require(isinstance(sbom, dict) and str(sbom.get("spdxVersion", "")).startswith("SPDX-")
                     and sbom.get("SPDXID") == "SPDXRef-DOCUMENT", "invalid SPDX document")
+            packages = sbom.get("packages", [])
+            require(isinstance(packages, list) and len(packages) >= 2, "SPDX dependency inventory is empty")
+            identifiers = [row.get("SPDXID") for row in packages]
+            require(all(isinstance(x, str) for x in identifiers) and len(set(identifiers)) == len(identifiers),
+                    "invalid or duplicated SPDX package identity")
+            binary = [row for row in packages if row.get("SPDXID") == "SPDXRef-ProviderBinary"]
+            require(len(binary) == 1 and binary[0].get("checksums") == [
+                {"algorithm":"SHA256", "checksumValue":member_hashes[arch]["vaultwarden-eso-provider"]}],
+                "SPDX executable checksum differs from the packaged binary")
+            require(binary[0].get("versionInfo") == version and sbom.get("name", "").endswith("-linux-" + arch),
+                    "SPDX version or platform differs from the release")
         result.append({"name": name, "sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data)})
-    for arch in ARCHES:
-        members = check_archive(directory / binary_name(version, arch), arch)
-        require(members["THIRD-PARTY-LICENSES.txt"] == hashlib.sha256(read_regular(directory / "THIRD-PARTY-LICENSES.txt")).hexdigest(),
-                "native archive notices differ from the published notices")
     return result
 
 
