@@ -54,6 +54,10 @@ impl fmt::Debug for EncryptedCipher {
                 "organization_id",
                 &self.organization_id.as_ref().map(|_| "<redacted>"),
             )
+            .field(
+                "deleted_date",
+                &self.deleted_date.as_ref().map(|_| "<present>"),
+            )
             .field("key", &self.key.as_ref().map(|_| "<redacted>"))
             .field("name", &self.name.as_ref().map(|_| "<redacted>"))
             .field("notes", &self.notes.as_ref().map(|_| "<redacted>"))

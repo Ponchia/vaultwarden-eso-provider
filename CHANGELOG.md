@@ -8,7 +8,7 @@ Release notes are generated from merged pull requests using
 [`.github/release.yml`](.github/release.yml). Maintainers should label PRs
 before release so generated notes land in the right category.
 
-## Unreleased hardening
+## Unreleased
 
 - Correct Password Manager Argon2 salt preprocessing with independently
   generated interoperability vectors; the published v0.4.0 path is affected.
@@ -21,9 +21,6 @@ before release so generated notes land in the right category.
   and temporary unlock buffers on drop.
 - Bound policy-file reads directly instead of relying on a preceding stat.
 - Increase default pod memory to 256 MiB and ESO example timeouts to 90 seconds.
-
-
-## Unreleased
 
 - Added capability-scoped webhook authentication: a Secret-mounted JSON policy
   can define multiple bearer-token sets with independent exact/prefix selector
