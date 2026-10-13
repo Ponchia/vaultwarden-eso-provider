@@ -8,9 +8,18 @@ Release notes are generated from merged pull requests using
 [`.github/release.yml`](.github/release.yml). Maintainers should label PRs
 before release so generated notes land in the right category.
 
-## v0.5.0-rc.1 - Unreleased candidate
+## v0.5.0-rc.1 - 2026-10-13
 
-This version identifies qualification artifacts only; no release has been published.
+Prerelease: Vaultwarden packages are qualified on AMD64 and ARM64. Current
+Bitwarden Cloud qualification remains open; see the release notes for exact
+publication and validation evidence.
+
+- Gate publishing on ten passing exact-commit source and packaged checks.
+- Mark prereleases explicitly and preserve stable/latest container aliases.
+- Verify signed published chart/image bytes without rebuilding them, including
+  exact source and signer identity, before deployment qualification.
+- Exercise packaged private-CA TLS, restart, target recreation and rollback to
+  the pinned previous release and back. Retain only credential-free artifacts.
 
 - Throttle failed refresh bursts even with a cold cache or authentication
   failure; cooldown responses fail closed and never grant stale reads.

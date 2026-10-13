@@ -123,7 +123,7 @@ jobs:
         run: bash scripts/live-smoke-contracts.sh
 
       - name: Test artifact qualification identity guards
-        run: python3 -m unittest discover -s scripts -p 'test_qualification_*.py'
+        run: python3 -m unittest discover -s scripts -p 'test_*.py'
 
       - name: Validate local documentation links
         run: python3 scripts/check-doc-links.py

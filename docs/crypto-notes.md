@@ -46,14 +46,14 @@ unwrap is separate work and must receive fixture tests plus live Vaultwarden and
 Bitwarden Cloud verification before support is advertised. Selected shared
 organization items fail explicitly in the current release line.
 
-## Argon2 interoperability regression (unreleased)
+## Argon2 interoperability regression (fixed in 0.5.0-rc.1)
 
 The `v0.4.0` Argon2 path incorrectly uses the normalized email directly as the
 Argon2 salt. Bitwarden Password Manager instead uses the SHA-256 digest of that
 normalized email. PBKDF2 still uses the normalized email directly. This was a
 compatibility failure, not evidence that the Argon2 primitive itself was weak.
-`main` corrects the derivation; do not claim the fix is in a published image
-until the next release is verified.
+`0.5.0-rc.1` corrects the derivation. Use the exact release verification evidence
+before installing an image; current Bitwarden Cloud qualification remains open.
 
 Regression vectors use synthetic inputs and were independently generated with
 `argon2-cffi` 25.1.0 / libargon2, not with this repository's Rust code. Reproduce

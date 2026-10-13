@@ -2,22 +2,34 @@
 
 This project targets the Bitwarden Password Manager vault protocol. The
 primary target is **Vaultwarden** (and self-hosted Bitwarden Password Manager
-exposed through a single origin); **Bitwarden Cloud Password Manager** is a
-supported second target through the split-endpoint mode. Bitwarden Secrets
+exposed through a single origin); **Bitwarden Cloud Password Manager** has an
+implemented split-endpoint mode, but current live Cloud qualification is pending.
+Bitwarden Secrets
 Manager (`bws`) is not in scope and is not available in Vaultwarden in any case.
 
 ## Release qualification
 
-The published `v0.4.0` image has a known Argon2 salt-preprocessing defect.
-The corrected path and independently generated regression vectors are on
-unreleased `main`; PBKDF2 uses a different salt path. Do not interpret old
-backend smoke records as evidence of working Argon2 accounts.
+`v0.5.0-rc.1` contains the corrected Argon2 salt preprocessing and independent
+regression vectors. Both native AMD64 and ARM64 candidate packages are exercised
+against Vaultwarden 1.37.4 and ESO 2.12.0, including mounted credentials,
+private-CA TLS, source rotation, deletion, restart and rollback.
 
-Current-source CI includes an independently bootstrapped Vaultwarden 1.37.4
-backend with PBKDF2 and Argon2 accounts and an actual ESO 2.12.0 lifecycle test.
-The workflow's exact-head result is the evidence; it does not validate arbitrary
-backend versions, shared organization items, Cloud accounts or release images.
-See [testing](live-testing.md) and [crypto notes](crypto-notes.md).
+Published artifacts are tested separately: the workflow downloads their exact
+signed chart and digest-pinned image, verifies provenance against the tag's
+source commit, and exercises those bytes without rebuilding them. The run and
+its artifact record, rather than a source-tree pass, establish that evidence.
+
+**Bitwarden Cloud US/EU is not currently requalified.** The older Cloud smoke
+below is historical and is not proof of current unlock compatibility. #75 stays
+open until a dedicated private-account check succeeds. The prerelease must not
+be represented as generally qualified across every backend. Independent review
+and defined soak testing remain separate work (#76).
+
+The previous stable `v0.4.0` has a known Argon2 salt-preprocessing defect and
+returns 404 for missing fields. Prefer a deliberately qualified fixed build;
+do not reduce an account's KDF or infer source deletion from a field typo.
+See [testing](live-testing.md), [qualification](release-qualification.md) and
+[crypto notes](crypto-notes.md).
 
 ## Endpoint Modes
 
@@ -107,7 +119,7 @@ The latest Vaultwarden live verification environment used:
 Implemented:
 
 - User API-key login with master-password unlock data.
-- PBKDF2-SHA256; corrected Argon2id support on unreleased `main`.
+- PBKDF2-SHA256; corrected Argon2id support in `0.5.0-rc.1`.
 - Authenticated Bitwarden encrypted strings.
 - Login, secure-note notes, custom fields, TOTP fields, and SSH key fields.
 - Individual vault item sync against single-origin and split endpoint layouts.
