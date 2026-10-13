@@ -51,6 +51,9 @@ Protect `main` with these rules:
   - `CodeQL Actions`
   - `Minimum Rust`
   - `Vaultwarden and ESO`
+  - `License notices`
+  - `Packaged provider (amd64)`
+  - `Packaged provider (arm64)`
 - Include administrators.
 - Block force pushes.
 - Block deletions.
