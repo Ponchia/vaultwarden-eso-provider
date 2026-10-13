@@ -136,7 +136,7 @@ class EsoFixture:
         return result.stdout
 
     def create(self, resource: dict[str, Any]) -> None:
-        # create/replace avoid putting token values in last-applied annotations.
+        # create avoids putting token values in last-applied annotations.
         self.run(["create", "-f", "-"], resource)
 
     def get(self, kind: str, name: str) -> dict[str, Any] | None:
@@ -153,7 +153,10 @@ class EsoFixture:
     def missing_property_preserves_targets(self, expected: str) -> None:
         for resource in self.items:
             resource["spec"]["data"][0]["remoteRef"]["property"] = "fixture-field-that-does-not-exist"
-            self.run(["replace", "-f", "-"], resource)
+            # Patch only the owned data mapping. Full-object replace races ESO's
+            # status writes and can fail on resourceVersion conflicts.
+            self.run(["-n", self.namespace, "patch", "externalsecret", resource["metadata"]["name"],
+                      "--type=merge", "--patch-file=/dev/stdin"], {"spec": {"data": resource["spec"]["data"]}})
         def failed() -> bool:
             return all(any(c.get("type") == "Ready" and c.get("status") == "False"
                 for c in (self.get("externalsecret", item["metadata"]["name"]) or {}).get("status", {}).get("conditions", []))
@@ -162,7 +165,10 @@ class EsoFixture:
         require(self.values_equal(expected), "missing property removed or changed an existing Kubernetes Secret")
         for resource in self.items:
             resource["spec"]["data"][0]["remoteRef"]["property"] = "password"
-            self.run(["replace", "-f", "-"], resource)
+            # Patch only the owned data mapping. Full-object replace races ESO's
+            # status writes and can fail on resourceVersion conflicts.
+            self.run(["-n", self.namespace, "patch", "externalsecret", resource["metadata"]["name"],
+                      "--type=merge", "--patch-file=/dev/stdin"], {"spec": {"data": resource["spec"]["data"]}})
 
     def verify_deleted(self, retained: str) -> None:
         eventually(lambda: self.get("secret", "target-delete") is None,
