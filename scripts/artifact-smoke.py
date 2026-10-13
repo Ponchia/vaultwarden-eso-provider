@@ -142,8 +142,9 @@ class HelmProvider:
                                   "--wait", "--timeout", "180s"], timeout=210)
             self.image_id = self.run(self.kube + ["-n", self.namespace, "get", "pod", "-l", "app.kubernetes.io/instance=provider",
                                                "-o", "jsonpath={.items[0].status.containerStatuses[0].imageID}"]).strip()
+            cri_reference = self.image_id.split("://", 1)[-1]
             runtime_image = json.loads(self.run(["docker", "exec", "bweso-interop-control-plane",
-                                                "crictl", "inspecti", self.image_id]))
+                                                "crictl", "inspecti", cri_reference]))
             require(runtime_image["status"]["id"].endswith(args.image_id),
                     "running pod does not match the built image identity")
             with socket.socket() as sock:
@@ -160,6 +161,10 @@ class HelmProvider:
     def run(command: list[str], payload: Any = None, timeout: int = 60) -> str:
         result = subprocess.run(command, input=None if payload is None else json.dumps(payload),
                                 capture_output=True, text=True, timeout=timeout)
+        if result.returncode != 0 and Path(command[0]).name == "docker":
+            # This branch runs only a CRI image-identity read. No credential input.
+            detail = " ".join(result.stderr.split())[:700]
+            raise fixture.SmokeFailure("container image-identity lookup failed: " + detail)
         require(result.returncode == 0, "packaged fixture command failed: " + Path(command[0]).name)
         return result.stdout
 
@@ -221,7 +226,7 @@ class HelmProvider:
             require(status == 200 and document["data"]["value"] == expected,
                     "released PBKDF2 chart/image rollback failed")
         else:
-            require(status not in (200, 404), "known-incompatible released Argon2 path did not fail conservatively")
+            require(status == 500, "known-incompatible released Argon2 path did not fail with the expected decryption error")
         require(eso.values_equal(expected), "cross-version rollback lost an existing ESO target")
         self.stop_forward()
         self.run(self.helm + ["rollback", "provider", candidate_revision, "--wait", "--timeout", "180s"], timeout=210)

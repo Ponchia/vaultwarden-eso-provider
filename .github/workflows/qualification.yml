@@ -62,12 +62,30 @@ jobs:
           python3 -m venv "${RUNNER_TEMP}/qualification-venv"
           "${RUNNER_TEMP}/qualification-venv/bin/pip" install --disable-pip-version-check -r scripts/requirements-integration.txt
           python3 -m py_compile scripts/artifact-smoke.py scripts/vaultwarden-smoke.py
+      - name: Identify exact source
+        run: |
+          revision="$(git rev-parse HEAD)"
+          {
+            echo "QUALIFICATION_REVISION=${revision}"
+            echo "QUALIFICATION_IMAGE=bweso-candidate:${revision}"
+          } >> "${GITHUB_ENV}"
+      - name: Build candidate without registry publication
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
+        env:
+          DOCKER_BUILD_RECORD_UPLOAD: "false"
+        with:
+          context: .
+          load: true
+          push: false
+          tags: ${{ env.QUALIFICATION_IMAGE }}
+          labels: org.opencontainers.image.revision=${{ env.QUALIFICATION_REVISION }}
+          cache-from: type=gha,scope=qualification-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=qualification-${{ matrix.arch }}
       - name: Build exact candidate image and chart without publishing
         run: |
           set -euo pipefail
           revision="$(git rev-parse HEAD)"
           image="bweso-candidate:${revision}"
-          docker buildx build --load --tag "${image}" --label "org.opencontainers.image.revision=${revision}" .
           mkdir -p "${RUNNER_TEMP}/public-artifacts"
           helm package deploy/helm/vaultwarden-eso-provider --destination "${RUNNER_TEMP}/public-artifacts"
           image_id="$(docker inspect "${image}" --format '{{.Id}}')"
