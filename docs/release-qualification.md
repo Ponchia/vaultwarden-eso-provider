@@ -1,8 +1,9 @@
 # Candidate qualification
 
-`0.5.0-rc.1` identifies an **unpublished candidate**, not a released version.
-The published release remains `v0.4.0`. Preparing or testing artifacts does not
-publish an image, create a tag, or authorize a production rollout.
+`0.5.0-rc.1` is a **prerelease**, not a generally qualified stable release.
+GitHub Releases records publication and exact artifact evidence. Candidate
+checks alone neither publish artifacts nor establish that released bytes passed.
+Bitwarden Cloud remains a separate, incomplete acceptance item (#75).
 
 ## Public, disposable checks
 
@@ -33,6 +34,23 @@ Kubeconfigs, fixture directories, logs, browser profiles and account credentials
 are excluded. Successful main builds additionally attest artifact provenance.
 The record deliberately says `cloudTested: false`; a disposable Vaultwarden pass
 must not be presented as Bitwarden Cloud verification.
+
+## Verify published artifacts without rebuilding
+
+Select the release tag as both the workflow ref and the validated input:
+
+```bash
+gh workflow run qualification.yml --ref v0.5.0-rc.1 \
+  -f release_tag=v0.5.0-rc.1
+```
+
+This mode downloads the signed release archive, checks its checksum against
+release evidence, verifies the chart and image signatures and provenance with
+the exact tag/source/workflow, and confirms the OCI chart has identical bytes.
+It then pulls the image by digest and runs the same native packaged lifecycle
+tests. It does not rebuild the image or chart. The qualification record names
+the release tag and image digest and records `published: true`; `cloudTested`
+remains false. Use this run before promoting the package into a live deployment.
 
 ## Private Cloud checks
 

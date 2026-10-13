@@ -22,27 +22,26 @@ with Bitwarden, Vaultwarden, or External Secrets Operator.
 
 ## Release status
 
-**`v0.4.0` is the published release. `0.5.0-rc.1` is an unpublished candidate.**
+**The `v0.5.0-rc.1` prerelease line contains the Argon2 and deletion-safety fixes.**
+Check [GitHub Releases](https://github.com/Ponchia/vaultwarden-eso-provider/releases)
+for published artifacts and verification evidence. `v0.4.0` is the previous
+stable release and has a known Argon2 salt-preprocessing defect; do not weaken
+an account's KDF to work around it.
 
-See [candidate qualification](docs/release-qualification.md) for the exact-artifact
-checks and the separate private Bitwarden Cloud acceptance.
+The prerelease is qualified against disposable Vaultwarden on native AMD64 and
+ARM64. **Fresh Bitwarden Cloud qualification is still incomplete** (#75).
+Split-endpoint support is implemented, but is not a current Cloud certification.
+Shared organization items and attachments remain unsupported.
 
-A compatibility review found that the published Argon2id derivation uses the
-wrong salt preprocessing. The correction and independent regression vectors
-are on `main`, not in the `v0.4.0` image. Do not weaken an account's KDF to work
-around this. Argon2 users need a verified build containing the fix or a later
-verified release. See [crypto notes](docs/crypto-notes.md).
+`0.5.0-rc.1` adds capability-scoped bearer tokens, opt-in bounded stale-cache
+fallback, safer deletion/error semantics and an operator KDF memory budget.
+Read the [changelog](CHANGELOG.md) and [upgrade notes](docs/release-notes.md).
+A source update does not update an installed image automatically.
 
-Unreleased work also includes capability-scoped bearer tokens, bounded
-stale-cache fallback, corrected deletion/error semantics, and an operator KDF
-memory budget. Read the [changelog](CHANGELOG.md) before upgrading. A newer
-source tree does not update an installed image automatically.
-
-This is a pre-1.0, single-maintainer integration. Automated checks and recorded
-live smoke tests are not an independent security audit or a production soak
-qualification. Pin chart/image versions and review upgrades deliberately.
-[Release notes](https://github.com/Ponchia/vaultwarden-eso-provider/releases)
-contain the artifact digests, signatures and attestations.
+This is a pre-1.0, single-maintainer integration. Automated qualification is not
+an independent security audit or a production-soak result. Pin chart/image
+versions and review upgrades deliberately. See [qualification](docs/release-qualification.md)
+for the difference between candidate checks and tests of signed published bytes.
 
 ## Where it fits
 
@@ -57,11 +56,11 @@ or Bitwarden Secrets Manager. Shared organization items and attachments are
 not supported; a team that depends on those should not assume they will work.
 See the [compatibility matrix](docs/compatibility.md).
 
-## Install the published chart
+## Install the prerelease chart
 
 Read the [install guide](docs/install/eso-webhook.md) and
-[threat model](docs/threat-model.md) first. This example installs the published
-`0.4.0` chart; the release limitation above applies.
+[threat model](docs/threat-model.md) first. This example explicitly opts into
+`0.5.0-rc.1`; the Cloud qualification limitation above applies.
 
 Prerequisites: Kubernetes, ESO, Helm with OCI support, a dedicated user API key,
 and that user's master password. Prepare `client-id`, `client-secret`,
@@ -82,7 +81,7 @@ kubectl -n bweso-system create configmap bweso-selector-policy \
 
 helm upgrade --install bweso \
   oci://ghcr.io/ponchia/charts/vaultwarden-eso-provider \
-  --namespace bweso-system --version 0.4.0 \
+  --namespace bweso-system --version 0.5.0-rc.1 \
   --set-string config.singleOriginUrl='https://vaultwarden.example.com' \
   --set-string credentials.existingSecret.name='bweso-credentials' \
   --set-string selectorPolicy.configMap.name='bweso-selector-policy'
@@ -101,8 +100,8 @@ Selector policy restricts callers; it cannot contain a compromised process.
 Use separate accounts and deployments where that distinction matters.
 
 Allow only reviewed `id:` selectors. Policy is **item-level**, not field-level:
-access to an item allows any supported property on that item. Scoped tokens on
-`main` add caller-specific limits, but do not change the upstream account's
+access to an item allows any supported property on that item. Scoped tokens in
+`0.5.0-rc.1` add caller-specific limits, but do not change the upstream account's
 privileges. Restrict access to the provider namespace and workload token Secrets.
 
 The default Service is cluster-internal **HTTP**. It carries bearer tokens and

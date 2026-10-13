@@ -7,9 +7,11 @@ requirements belong in the [release checklist](public-release-checklist.md).
 
 ## Qualify the next release
 
-The Argon2 interoperability fix, conservative deletion signals, bounded KDF
-work, scoped authentication and optional stale cache are unreleased. Release
-qualification must test the exact candidate chart/image, not just source code.
+The `0.5.0-rc.1` prerelease contains the Argon2 fix, safer deletion signals,
+bounded KDF work, scoped authentication and optional stale cache. Native
+AMD64/ARM64 packages have disposable Vaultwarden/ESO qualification. Published
+bytes also need the signature-checked release-artifact run; Cloud acceptance
+under #75 is still open, so this is not a generally qualified stable release.
 
 Acceptance requires a passing current-head CI and interoperability run, release
 artifact verification, and deliberate upgrade/rollback tests. Repeat the

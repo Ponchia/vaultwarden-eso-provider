@@ -1,44 +1,31 @@
 # ESO Webhook Install
 
-**Version boundary:** `v0.4.0` is the published release. Capability-scoped auth,
-bounded stale cache, the corrected Argon2 path, memory budget and HTTP 422 for
-missing properties described below are unreleased on `main`. Use a matching
-candidate chart and image when testing source changes. Do not combine a
+**Version boundary:** this guide targets the `v0.5.0-rc.1` prerelease, including
+scoped authentication, opt-in bounded stale cache, corrected Argon2, the memory
+budget and HTTP 422 for missing properties. Current Cloud qualification is
+pending; Vaultwarden is the independently exercised backend. Do not combine a
 checkout chart with an old image and assume new settings are implemented.
 See [compatibility](../compatibility.md) before choosing a release.
 
 Install External Secrets Operator first. This project provides the Bitwarden
 Password Manager and Vaultwarden resolver behind ESO's generic webhook provider.
 
-Create a namespace and provider runtime credential Secret. For real credentials,
-prefer a secret manager or files so values do not land in shell history:
-
-```bash
-install -m 0700 -d /tmp/bweso-bootstrap
-printf '%s' 'user.<uuid>' > /tmp/bweso-bootstrap/client-id
-printf '%s' '...' > /tmp/bweso-bootstrap/client-secret
-printf '%s' '...' > /tmp/bweso-bootstrap/master-password
-printf '%s' 'generate-a-long-random-token' > /tmp/bweso-bootstrap/webhook-token
-
-kubectl create namespace bweso-system
-kubectl -n bweso-system create secret generic bweso-credentials \
-  --from-file=client-id=/tmp/bweso-bootstrap/client-id \
-  --from-file=client-secret=/tmp/bweso-bootstrap/client-secret \
-  --from-file=master-password=/tmp/bweso-bootstrap/master-password \
-  --from-file=webhook-token=/tmp/bweso-bootstrap/webhook-token
-rm -rf /tmp/bweso-bootstrap
-```
-
-For throwaway local clusters, literal placeholders are shorter:
+Prepare the four credential files in an operator-controlled private directory
+using your existing secret-management process. Never type their real values in
+shell commands or Helm values. The paths below are placeholders, not files this
+repository supplies:
 
 ```bash
 kubectl create namespace bweso-system
 kubectl -n bweso-system create secret generic bweso-credentials \
-  --from-literal=client-id='user.<uuid>' \
-  --from-literal=client-secret='...' \
-  --from-literal=master-password='...' \
-  --from-literal=webhook-token='generate-a-long-random-token'
+  --from-file=client-id=/secure/bweso/client-id \
+  --from-file=client-secret=/secure/bweso/client-secret \
+  --from-file=master-password=/secure/bweso/master-password \
+  --from-file=webhook-token=/secure/bweso/webhook-token
 ```
+
+Keep the private directory outside the repository with mode `0700` and files
+with mode `0600`. Clean up only files you created after the Secret is verified.
 
 The provider rejects `/v1/resolve` calls without `Authorization: Bearer
 <webhook-token>` by default.
@@ -53,7 +40,7 @@ unreleased `main` builds, clone the repository and use
 Set the release chart reference:
 
 ```bash
-CHART_VERSION=0.4.0
+CHART_VERSION=0.5.0-rc.1
 CHART_REF="oci://ghcr.io/ponchia/charts/vaultwarden-eso-provider"
 ```
 
@@ -128,7 +115,7 @@ syntax, property names, policy scope, and ConfigMap-backed hot reload behavior.
 
 ## Configure capability-scoped authentication
 
-This feature is available on unreleased `main`. The `v0.4.0` release supports
+This feature is available in `0.5.0-rc.1`. The `v0.4.0` release supports
 one webhook token with the global selector-policy scope.
 
 Use capability-scoped authentication when one provider serves several
@@ -169,7 +156,7 @@ JSON contract, limits, failure behavior, and security model.
 
 ## Configure bounded stale cache
 
-This configuration is available on unreleased `main`; the `v0.4.0` release
+This configuration is available in `0.5.0-rc.1`; the `v0.4.0` release
 continues to fail closed on every upstream refresh error.
 
 The provider fails closed on upstream refresh errors by default. You can opt in
@@ -402,7 +389,7 @@ reduce an account's KDF simply to fit a pod limit. See
 
 ## Refresh failure cooldown
 
-On unreleased `main`, `config.cacheRefreshRetryIntervalSeconds` also throttles
+In `0.5.0-rc.1`, `config.cacheRefreshRetryIntervalSeconds` also throttles
 failed refreshes when no stale snapshot is usable, including cold-cache and
 authentication failures. During the cooldown, resolves fail closed with HTTP
 503 `upstream_backoff`. This setting does not enable stale reads. The default

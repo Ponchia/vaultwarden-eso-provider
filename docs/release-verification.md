@@ -16,6 +16,7 @@ Set the version and evidence values from the GitHub Release:
 
 ```bash
 VERSION="<published-version>"
+SOURCE_COMMIT="<exact-source-commit-from-release-evidence>"
 IMAGE="ghcr.io/ponchia/vaultwarden-eso-provider@sha256:<image-digest>"
 CHART_REF="oci://ghcr.io/ponchia/charts/vaultwarden-eso-provider"
 CHART_SHA256="<chart-archive-sha256>"
@@ -35,12 +36,12 @@ helm upgrade --install bweso "${CHART_REF}" \
 Verify the keyless Sigstore signature attached to the image digest:
 
 ```bash
-CERT_ID_RE="https://github.com/Ponchia/vaultwarden-eso-provider/"
-CERT_ID_RE="${CERT_ID_RE}.github/workflows/release.yml@refs/tags/v.*"
+CERT_ID="https://github.com/Ponchia/vaultwarden-eso-provider/"
+CERT_ID="${CERT_ID}.github/workflows/release.yml@refs/tags/v${VERSION}"
 
 cosign verify \
   --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
-  --certificate-identity-regexp "${CERT_ID_RE}" \
+  --certificate-identity "${CERT_ID}" \
   "${IMAGE}"
 ```
 
@@ -50,7 +51,10 @@ Verify the GitHub artifact attestation for the image:
 gh attestation verify "oci://${IMAGE}" \
   --repo Ponchia/vaultwarden-eso-provider \
   --signer-workflow \
-  "Ponchia/vaultwarden-eso-provider/.github/workflows/release.yml"
+  "Ponchia/vaultwarden-eso-provider/.github/workflows/release.yml" \
+  --source-ref "refs/tags/v${VERSION}" \
+  --source-digest "${SOURCE_COMMIT}" \
+  --deny-self-hosted-runners
 ```
 
 ## Helm Chart
@@ -69,7 +73,10 @@ Verify the chart archive provenance attestation:
 gh attestation verify "vaultwarden-eso-provider-${VERSION}.tgz" \
   --repo Ponchia/vaultwarden-eso-provider \
   --signer-workflow \
-  "Ponchia/vaultwarden-eso-provider/.github/workflows/release.yml"
+  "Ponchia/vaultwarden-eso-provider/.github/workflows/release.yml" \
+  --source-ref "refs/tags/v${VERSION}" \
+  --source-digest "${SOURCE_COMMIT}" \
+  --deny-self-hosted-runners
 ```
 
 Verify the Sigstore bundle attached to the GitHub Release:
@@ -78,7 +85,7 @@ Verify the Sigstore bundle attached to the GitHub Release:
 cosign verify-blob \
   --bundle "vaultwarden-eso-provider-${VERSION}.tgz.sigstore.json" \
   --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
-  --certificate-identity-regexp "${CERT_ID_RE}" \
+  --certificate-identity "${CERT_ID}" \
   "vaultwarden-eso-provider-${VERSION}.tgz"
 ```
 

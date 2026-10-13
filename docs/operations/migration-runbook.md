@@ -50,7 +50,7 @@ Leave these with their existing owners unless you have a separate design:
    only for static policy that can wait for a provider rollout.
 
 5. Choose the webhook-auth model supported by the deployed release. Scoped
-   authentication is unreleased on `main`, not available in `v0.4.0`.
+   authentication requires `0.5.0-rc.1` or newer, not `v0.4.0`.
    If one provider serves multiple trust
    boundaries, configure `auth.scopedPolicy` with one capability and token per
    boundary. Otherwise, use the legacy global token.
