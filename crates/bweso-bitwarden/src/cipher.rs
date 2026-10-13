@@ -926,7 +926,7 @@ mod tests {
 }
 "#;
     #[test]
-    fn duplicate_custom_property_is_ambiguous() -> Result<(), Box<dyn std::error::Error>> {
+    fn duplicate_custom_property_is_ambiguous() {
         let cipher = DecryptedCipher {
             id: "fixture-id".to_string(),
             cipher_type: 2,
@@ -956,6 +956,5 @@ mod tests {
             cipher.to_secret_document(),
             Err(CipherError::DuplicateDocumentField { .. })
         ));
-        Ok(())
     }
 }

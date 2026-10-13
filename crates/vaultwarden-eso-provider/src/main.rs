@@ -1061,17 +1061,13 @@ fn provider_status_and_kind(error: &BitwardenClientError) -> (StatusCode, &'stat
         | BitwardenClientError::Cipher(
             CipherError::Crypto(_) | CipherError::NoExtractableFields { .. },
         ) => (StatusCode::INTERNAL_SERVER_ERROR, "crypto"),
-        BitwardenClientError::Api(BitwardenApiError::UnlockTaskFailed) => {
-            (StatusCode::INTERNAL_SERVER_ERROR, "key_derivation")
-        }
-        BitwardenClientError::Api(BitwardenApiError::InvalidKdfMemoryLimit) => {
-            (StatusCode::INTERNAL_SERVER_ERROR, "kdf_parameters")
-        }
-        BitwardenClientError::KeyDerivation(_) => {
+        BitwardenClientError::Api(BitwardenApiError::UnlockTaskFailed)
+        | BitwardenClientError::KeyDerivation(_) => {
             (StatusCode::INTERNAL_SERVER_ERROR, "key_derivation")
         }
         BitwardenClientError::Api(
             BitwardenApiError::UnsupportedKdfType { .. }
+            | BitwardenApiError::InvalidKdfMemoryLimit
             | BitwardenApiError::MissingKdfParameter { .. },
         ) => (StatusCode::INTERNAL_SERVER_ERROR, "kdf_parameters"),
         BitwardenClientError::Api(
