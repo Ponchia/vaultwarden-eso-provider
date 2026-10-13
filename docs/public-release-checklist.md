@@ -16,9 +16,11 @@ compatibility/security claim that needs to be tied to an exact artifact.
 
 For the pre-`v1.0.0` line, use a minor version bump for breaking runtime or
 chart-default changes. Use a patch version only for compatible fixes and
-documentation or packaging corrections. `v0.4.0` is the current release; do
-not describe work after that tag as released until its publishing workflow has
-completed successfully.
+documentation or packaging corrections. `v0.4.0` is the previous stable release.
+`0.5.0-rc.1` is a deliberately scoped prerelease while fresh Cloud acceptance
+remains open. Never call a tag published until its workflow succeeds.
+A prerelease can carry completed Vaultwarden evidence without claiming Cloud
+or general availability. Do not mark it latest or replace stable image aliases.
 
 Required before calling a release generally usable:
 
@@ -29,6 +31,8 @@ Required before calling a release generally usable:
   [`repository-governance.md`](repository-governance.md).
 - Confirm the release branch is clean, pushed, and both CI and the disposable
   `Vaultwarden and ESO` check pass on the exact candidate commit.
+- Run signed published-artifact qualification on both native architectures;
+  unlike a candidate build this must use the registry image and release archive.
 - Confirm `main` branch protection and release tag protection are active.
 - Confirm merged PRs have release-note labels that match
   [`.github/release.yml`](../.github/release.yml), and update

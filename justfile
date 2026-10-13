@@ -43,7 +43,7 @@ helm:
 # Validate Markdown and static YAML/JSON examples.
 docs:
   python3 scripts/check-doc-links.py
-  python3 -m unittest discover -s scripts -p 'test_qualification_*.py'
+  python3 -m unittest discover -s scripts -p 'test_*.py'
   markdownlint-cli2 '**/*.md'
   jq -e . docs/*.json >/dev/null
   jq -e . examples/grafana/*.json >/dev/null

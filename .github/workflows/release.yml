@@ -13,6 +13,9 @@ permissions:
 jobs:
   verify:
     name: Verify
+    permissions:
+      contents: read
+      checks: read
     runs-on: ubuntu-latest
     env:
       CHECKOV_IMAGE: bridgecrew/checkov:3.2.526@sha256:93a910a5854dce9b9935c18e96574162dec7ef2f07b819fd6af19f2e16ea306c
@@ -24,6 +27,12 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
+
+      - name: Require exact-commit source and packaged evidence
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 scripts/release_gates.py
 
       - name: Verify release versions
         if: startsWith(github.ref, 'refs/tags/')
@@ -173,9 +182,10 @@ jobs:
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
         with:
           images: ${{ steps.image.outputs.name }}
+          flavor: latest=${{ !contains(github.ref_name, '-') }}
           tags: |
             type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ !contains(github.ref_name, '-') }}
             type=sha,prefix=
 
       - name: Build and push platform image
@@ -243,9 +253,10 @@ jobs:
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
         with:
           images: ${{ steps.image.outputs.name }}
+          flavor: latest=${{ !contains(github.ref_name, '-') }}
           tags: |
             type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ !contains(github.ref_name, '-') }}
             type=sha,prefix=
 
       - name: Download digests
@@ -466,6 +477,8 @@ jobs:
           bundle_name="${chart_name}.sigstore.json"
 
           {
+            cat docs/release-notes.md
+            echo
             if [ -s dist/generated-release-notes.md ]; then
               cat dist/generated-release-notes.md
               echo
@@ -517,6 +530,8 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
         with:
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          make_latest: ${{ !contains(github.ref_name, '-') }}
           body_path: dist/release-notes.md
           files: |
             dist/*.tgz
