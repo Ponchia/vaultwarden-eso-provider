@@ -10,6 +10,10 @@ before release so generated notes land in the right category.
 
 ## Unreleased — stable release preparation
 
+- Update the optional locked QUIC dependency past five published advisories;
+  keep disabled dependencies out of the actual distribution inventory.
+- Keep redaction-test failures value-free without weakening assertions.
+
 - Add Linux AMD64/ARM64 binary archives extracted from the exact container,
   runtime SPDX inventories, generated Cargo dependency notices, a complete
   release manifest, signed checksums and public-download verification.

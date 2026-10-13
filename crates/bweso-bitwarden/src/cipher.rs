@@ -712,7 +712,10 @@ mod tests {
             "encrypted-public-key-secret",
             "encrypted-fingerprint-secret",
         ] {
-            assert!(!output.contains(secret), "debug leaked {secret}: {output}");
+            assert!(
+                !output.contains(secret),
+                "debug output contained a synthetic secret marker"
+            );
         }
     }
 
@@ -775,7 +778,10 @@ mod tests {
                 "public-key-secret",
                 "fingerprint-secret",
             ] {
-                assert!(!output.contains(secret), "debug leaked {secret}: {output}");
+                assert!(
+                    !output.contains(secret),
+                    "debug output contained a synthetic secret marker"
+                );
             }
         }
     }

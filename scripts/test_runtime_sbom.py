@@ -1,5 +1,4 @@
 """Locked Cargo inventory and privacy regression tests."""
-import copy
 import json
 import struct
 import unittest
@@ -18,10 +17,11 @@ class RuntimeSbomTests(unittest.TestCase):
             'resolve':{'nodes':[
                 {'id':'path+/private/person/project','deps':[{'pkg':'dep','dep_kinds':[{'kind':None}]},{'pkg':'dev','dep_kinds':[{'kind':'dev'}]}]},
                 {'id':'dep','deps':[]},{'id':'dev','deps':[]}]}}
+        self.tree = '0vaultwarden-eso-provider v0.5.0 (/private/person/project)\n1dep v1.0.0\n'
         self.lock = {'package':[{'name':'dep','version':'1.0.0','source':REGISTRY,'checksum':'c'*64}]}
 
     def build(self):
-        return generate(self.metadata,self.lock,bytes(self.binary),'amd64','a'*40)
+        return generate(self.metadata,self.lock,bytes(self.binary),'amd64','a'*40,self.tree)
 
     def test_graph_has_binary_and_no_dev_dependency(self):
         result = self.build()
@@ -53,11 +53,22 @@ class RuntimeSbomTests(unittest.TestCase):
 
     def test_build_only_dependency_is_excluded(self):
         self.metadata['resolve']['nodes'][0]['deps'][0]['dep_kinds'][0]['kind'] = 'build'
+        self.tree = self.tree.splitlines()[0] + '\n'
         self.assertEqual(len(self.build()['packages']),2)
 
     def test_mixed_normal_and_dev_dependency_is_included(self):
         self.metadata['resolve']['nodes'][0]['deps'][0]['dep_kinds'].append({'kind':'dev'})
         self.assertEqual(len(self.build()['packages']),3)
+
+    def test_disabled_optional_metadata_edge_is_excluded(self):
+        self.tree = self.tree.splitlines()[0] + '\n'
+        self.assertEqual(len(self.build()['packages']),2)
+
+    def test_malformed_tree_or_undeclared_edges_fail(self):
+        for tree in ('', 'wrong format', '0vaultwarden-eso-provider v0.5.0\n2dep v1.0.0\n',
+                     '0vaultwarden-eso-provider v0.5.0\n1dev v1.0.0\n'):
+            self.tree = tree
+            with self.assertRaises(ValueError): self.build()
 
     def test_wrong_executable_platform_is_rejected(self):
         struct.pack_into('<H',self.binary,18,183)

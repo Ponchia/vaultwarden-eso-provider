@@ -30,6 +30,8 @@ archive's binary against the actual image binary before retention.
 
 An SPDX inventory includes the exact executable checksum and the locked,
 target-filtered normal Cargo dependency graph with registry crate checksums.
+Membership and relationships come from `cargo tree`; Cargo metadata alone can
+include disabled optional dependencies and is used only for package details.
 This avoids relying on image scanners that cannot enumerate static Rust
 dependencies. Build-only and dev-only edges are excluded. The graph is declared
 source-dependency evidence, not a byte-level linker inventory or a guarantee
@@ -37,6 +39,19 @@ that every embedded component has been identified. The notices and inventory
 are not a legal opinion or a security certification. CI validates every
 distributed inventory against the
 checksum-pinned upstream SPDX 2.3 schema.
+
+## Locked dependencies and static analysis
+
+CI audits the complete lockfile as well as the configured dependency graph.
+This catches vulnerable optional dependencies even when they are disabled in
+the provider build. The `quinn-proto` lock entry is updated to 0.11.18 for
+RUSTSEC-2026-0338 through RUSTSEC-2026-0342; the provider does not enable HTTP/3.
+The active SPDX inventory excludes disabled optional entries.
+
+Fixed cryptographic known-answer vectors belong to test-only modules.
+Reviewed static-analysis false positives retain per-alert rationale; no
+cryptography rule is disabled. Redaction tests keep their assertions while
+avoiding value-bearing panic messages, even for synthetic fixtures.
 
 ## Remaining backend evidence
 

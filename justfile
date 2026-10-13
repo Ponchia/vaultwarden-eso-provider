@@ -58,6 +58,7 @@ workflows:
 security:
   gitleaks detect --source . --redact --exit-code 1
   trivy fs --scanners vuln,secret --severity HIGH,CRITICAL --exit-code 1 --ignore-unfixed .
+  cargo audit --file Cargo.lock
   cargo deny --locked check advisories licenses bans sources
   just checkov
 
