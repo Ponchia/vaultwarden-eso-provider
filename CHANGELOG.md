@@ -10,6 +10,11 @@ before release so generated notes land in the right category.
 
 ## Unreleased
 
+- Add independently bootstrapped Vaultwarden/ESO CI without private credentials.
+- Require explicit test account opt-in/context for release smoke testing; never
+  adopt or clean an existing namespace or persist credentials in apply metadata.
+- Consolidate operator and release documentation and check local links in CI.
+
 - Correct Password Manager Argon2 salt preprocessing with independently
   generated interoperability vectors; the published v0.4.0 path is affected.
 - Move KDF work off async workers and enforce an operator Argon2 memory budget.

@@ -1,193 +1,122 @@
 # Vaultwarden ESO Provider
 
 [![CI](https://github.com/Ponchia/vaultwarden-eso-provider/actions/workflows/ci.yml/badge.svg)](https://github.com/Ponchia/vaultwarden-eso-provider/actions/workflows/ci.yml)
+[![Interoperability](https://github.com/Ponchia/vaultwarden-eso-provider/actions/workflows/integration.yml/badge.svg)](https://github.com/Ponchia/vaultwarden-eso-provider/actions/workflows/integration.yml)
 [![Release](https://img.shields.io/github/v/release/Ponchia/vaultwarden-eso-provider?include_prereleases&sort=semver)](https://github.com/Ponchia/vaultwarden-eso-provider/releases)
-[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/Ponchia/vaultwarden-eso-provider/badge)](https://scorecard.dev/viewer/?uri=github.com/Ponchia/vaultwarden-eso-provider)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-Unofficial [External Secrets Operator](https://external-secrets.io/) webhook
-provider for **Vaultwarden**, self-hosted **Bitwarden Password Manager**, and
-**Bitwarden Cloud Password Manager** vault items.
-
-The provider lets ESO read Password Manager vault items and materialize normal
-Kubernetes Secrets. It is not a Bitwarden Secrets Manager (`bws`) integration;
-that is a separate Bitwarden product surface and Vaultwarden does not implement
-it.
+A Rust [External Secrets Operator](https://external-secrets.io/) webhook provider
+for **Vaultwarden and Bitwarden Password Manager vault items**. It reads and
+decrypts selected item fields; ESO creates and refreshes Kubernetes Secrets.
 
 ```text
-Vaultwarden or Bitwarden Password Manager
-        |
-        | user API key + master-password unlock + local item decryption
-        v
-vaultwarden-eso-provider
-        |
-        | ESO webhook provider
-        v
-External Secrets Operator
-        |
-        v
-Kubernetes Secret
+Vaultwarden / Bitwarden Password Manager
+    -> provider: authenticate, unlock, decrypt, enforce selector policy
+    -> ESO: refresh, template, own Kubernetes Secret lifecycle
+    -> Kubernetes Secret
 ```
 
-This repository is not affiliated with Bitwarden, Vaultwarden, 1Password, or
-the External Secrets Operator project.
+This is not Bitwarden Secrets Manager (`bws`), a separate product that
+Vaultwarden does not implement. The project is unofficial and is not affiliated
+with Bitwarden, Vaultwarden, or External Secrets Operator.
 
-## Status
+## Release status
 
-`v0.4.0` is the current public release. The provider is functional and has been
-smoke-tested end-to-end against released chart and image paths, but it is still
-pre-`v1.0.0`: chart values, image tags, and crate APIs may change, there is no
-production soak time, and the project currently has a single maintainer.
+**`v0.4.0` is the published release. `main` contains unreleased changes.**
 
-Pin chart and image versions for real deployments and treat upgrades as
-deliberate changes. Release notes are the source of truth for image digests,
-chart digests, signatures, attestations, and chart archive checksums.
+A compatibility review found that the published Argon2id derivation uses the
+wrong salt preprocessing. The correction and independent regression vectors
+are on `main`, not in the `v0.4.0` image. Do not weaken an account's KDF to work
+around this. Argon2 users need a verified build containing the fix or a later
+verified release. See [crypto notes](docs/crypto-notes.md).
 
-## Should You Use It?
+Unreleased work also includes capability-scoped bearer tokens, bounded
+stale-cache fallback, corrected deletion/error semantics, and an operator KDF
+memory budget. Read the [changelog](CHANGELOG.md) before upgrading. A newer
+source tree does not update an installed image automatically.
 
-Use this project when you:
+This is a pre-1.0, single-maintainer integration. Automated checks and recorded
+live smoke tests are not an independent security audit or a production soak
+qualification. Pin chart/image versions and review upgrades deliberately.
+[Release notes](https://github.com/Ponchia/vaultwarden-eso-provider/releases)
+contain the artifact digests, signatures and attestations.
 
-- run Vaultwarden or self-hosted Bitwarden Password Manager and want
-  ESO-managed Kubernetes Secrets;
-- store source-of-truth values in Bitwarden Cloud Password Manager vault items;
-- want ESO to own refresh intervals, target Secret policies, templating, and
-  status;
-- can dedicate a Vaultwarden or Bitwarden user account to each Kubernetes trust
-  boundary;
-- want a small webhook service with no Kubernetes API permissions.
+## Where it fits
 
-Use something else when you need:
+Use this when you already operate Vaultwarden or Password Manager, use ESO,
+and can dedicate a vault account to each infrastructure trust boundary. The
+provider needs no Kubernetes API permissions and does not require the `bw` CLI
+at runtime. Compared with a CLI-backed webhook, that reduces runtime machinery
+but makes this project responsible for protocol compatibility.
 
-- Bitwarden Cloud Secrets Manager (`bws`) instead of Password Manager vault
-  items;
-- dynamic infrastructure secrets, leases, database credentials, or native cloud
-  identity;
-- shared organization vault-item decryption or attachment extraction today;
-- built-in TLS/mTLS on the ESO-to-provider hop without adding a mesh, ingress,
-  or gateway.
+Use a different backend for dynamic credentials, leases, native cloud identity,
+or Bitwarden Secrets Manager. Shared organization items and attachments are
+not supported; a team that depends on those should not assume they will work.
+See the [compatibility matrix](docs/compatibility.md).
 
-## Install In Short
+## Install the published chart
 
-Start with the full [ESO webhook install guide](docs/install/eso-webhook.md)
-before using this in a real cluster. The short version below shows the shape of
-a Vaultwarden install.
+Read the [install guide](docs/install/eso-webhook.md) and
+[threat model](docs/threat-model.md) first. This example installs the published
+`0.4.0` chart; the release limitation above applies.
 
-Prerequisites:
-
-- Kubernetes cluster.
-- [External Secrets Operator](https://external-secrets.io/latest/) installed.
-- Helm 3.8+ or Helm 4 for OCI chart support.
-- Dedicated Vaultwarden or Bitwarden user API key.
-- That user's master password.
-
-Create the provider namespace and runtime credentials:
+Prerequisites: Kubernetes, ESO, Helm with OCI support, a dedicated user API key,
+and that user's master password. Prepare `client-id`, `client-secret`,
+`master-password`, and a long random `webhook-token` in an operator-controlled
+private directory. Do not commit these files or put their values in shell
+history or Helm values.
 
 ```bash
 kubectl create namespace bweso-system
-
 kubectl -n bweso-system create secret generic bweso-credentials \
-  --from-literal=client-id='user.<uuid>' \
-  --from-literal=client-secret='...' \
-  --from-literal=master-password='...' \
-  --from-literal=webhook-token='generate-a-long-random-token'
-```
+  --from-file=client-id=/secure/bweso/client-id \
+  --from-file=client-secret=/secure/bweso/client-secret \
+  --from-file=master-password=/secure/bweso/master-password \
+  --from-file=webhook-token=/secure/bweso/webhook-token
 
-Create a selector-policy ConfigMap with the vault item IDs this provider may
-resolve. ConfigMap-backed policy hot-reloads, so adding a reviewed item later
-does not require a provider restart:
-
-```bash
 kubectl -n bweso-system create configmap bweso-selector-policy \
   --from-literal=allowed-keys='id:00000000-0000-0000-0000-000000000000'
-```
 
-Install the released chart for a Vaultwarden or single-origin self-hosted
-Bitwarden server:
-
-```bash
-CHART_VERSION=0.4.0
-CHART_REF="oci://ghcr.io/ponchia/charts/vaultwarden-eso-provider"
-
-helm upgrade --install bweso "${CHART_REF}" \
-  --namespace bweso-system \
-  --version "${CHART_VERSION}" \
+helm upgrade --install bweso \
+  oci://ghcr.io/ponchia/charts/vaultwarden-eso-provider \
+  --namespace bweso-system --version 0.4.0 \
   --set-string config.singleOriginUrl='https://vaultwarden.example.com' \
   --set-string credentials.existingSecret.name='bweso-credentials' \
   --set-string selectorPolicy.configMap.name='bweso-selector-policy'
 ```
 
-Bitwarden Cloud uses split identity/API endpoints instead. See
-[Compatibility](docs/compatibility.md) and the
-[install guide](docs/install/eso-webhook.md) for the exact values.
+Replace the example item ID with a reviewed source item. Create a namespace-local
+`SecretStore` and `ExternalSecret` using the [ESO examples](deploy/eso).
+Bitwarden Cloud uses separate identity/API endpoints; the install guide covers
+US and EU endpoint configuration.
 
-After the provider is installed, create a namespace-local ESO `SecretStore` and
-`ExternalSecret`. Examples are in [deploy/eso](deploy/eso).
+## Security boundaries
 
-## How It Works
+The provider holds an API key, master password and unlocked user key. A
+compromised provider can decrypt everything accessible to that account.
+Selector policy restricts callers; it cannot contain a compromised process.
+Use separate accounts and deployments where that distinction matters.
 
-- ESO calls `/v1/resolve` through its generic webhook provider.
-- The provider authenticates the webhook bearer token before parsing the body.
-- Unreleased `main` can bind different bearer tokens to independent selector
-  allowlists while retaining the global selector policy as an upper bound.
-- It logs in with a dedicated Vaultwarden or Bitwarden user API key.
-- It unlocks the user vault locally with the configured master password.
-- It resolves `id:<item-id>` or `name:<item-name>` selectors to item fields.
-- ESO writes the resulting value into a Kubernetes Secret according to the
-  `ExternalSecret` target policy.
+Allow only reviewed `id:` selectors. Policy is **item-level**, not field-level:
+access to an item allows any supported property on that item. Scoped tokens on
+`main` add caller-specific limits, but do not change the upstream account's
+privileges. Restrict access to the provider namespace and workload token Secrets.
 
-See [Architecture](docs/architecture.md) for the design and trade-offs.
+The default Service is cluster-internal **HTTP**. It carries bearer tokens and
+plaintext resolved values. Use a trusted pod network with reviewed NetworkPolicy
+rules, or a TLS/mTLS gateway or service mesh. NetworkPolicy is opt-in because
+backend and DNS routes are cluster-specific; enabling it with empty rules denies
+all ingress and egress. Never expose the default Service to the internet.
 
-## Security Defaults To Notice
+Public errors and metrics omit secret values and selectors. Use the
+[operations runbook](docs/operations/failure-and-recovery.md) for failed refreshes,
+revocations, credential changes and the limits of last-known-good policy reloads.
+The provider does not restart consumer workloads or create dynamic secrets.
 
-- The provider has no Kubernetes API RBAC.
-- Vault item metadata never decides the Kubernetes namespace or Secret name.
-- Public errors, logs, and metrics redact secret values, vault item IDs, item
-  names, requested properties, API tokens, master passwords, and derived keys.
-- Non-local Vaultwarden/Bitwarden endpoints require TLS verification.
-- Upstream refresh failures fail closed by default. Unreleased `main` lets
-  operators opt in to a bounded stale-cache window for transient outages; see the
-  [install guide](docs/install/eso-webhook.md#configure-bounded-stale-cache).
-- The chart exposes a cluster-internal HTTP Service by default; add a mesh,
-  ingress, or gateway when the pod network is not a trusted boundary.
-- Selector policy is item-key scoped, not property scoped. If a namespace can
-  request an allowed item, it can request any property on that item.
-- A legacy single webhook token grants the global selector-policy scope. For a
-  shared provider serving different namespace trust boundaries, use the
-  capability-scoped auth policy available on unreleased `main`.
+## Development and validation
 
-Read the [Threat Model](docs/threat-model.md) before production use.
-
-## Current Limits
-
-- Shared organization items fail explicitly with `unsupported_shared_item`.
-- Attachments fail explicitly with `unsupported_attachment`.
-- Interactive two-factor and new-device challenge flows are not supported for
-  API-key login.
-- Per-source rate limiting is not available; the current cap is global
-  `/v1/resolve` concurrency.
-- The provider does not restart application workloads after Secret changes.
-  Use ESO refreshes, Stakater Reloader, checksum annotations, or your GitOps
-  rollout mechanism.
-
-## Documentation
-
-Start with [docs/index.md](docs/index.md) for the full documentation map.
-
-| Need | Go to |
-| --- | --- |
-| Install the provider | [ESO webhook install](docs/install/eso-webhook.md) |
-| Choose endpoints and supported surfaces | [Compatibility](docs/compatibility.md) |
-| Understand selectors and policy | [Selectors and policy](docs/selectors-and-policy.md) |
-| Verify release artifacts | [Release verification](docs/release-verification.md) |
-| Operate metrics and alerts | [Observability](docs/operations/observability.md) |
-| Plan migrations | [Migration runbook](docs/operations/migration-runbook.md) |
-| Review security boundaries | [Threat model](docs/threat-model.md) |
-| See examples | [ESO examples](deploy/eso) and [Helm chart](deploy/helm) |
-
-## Development
-
-The project pins common local tools with `mise` and exposes repeatable commands
-with `just`:
+`rust-toolchain.toml` pins Rust; `mise.toml` and `justfile` pin and route the
+other tools. Start with:
 
 ```bash
 mise install
@@ -195,26 +124,16 @@ mise run check
 mise run ci
 ```
 
-`mise run check` runs the standard handoff checks:
+CI enforces formatting, Clippy, tests with an 80% line-coverage floor, Helm
+contracts, documentation checks, dependency/security scans and Docker builds.
+The separate interoperability workflow creates disposable Vaultwarden accounts
+using independent Python cryptography, tests PBKDF2 and Argon2id, and exercises
+actual ESO `Delete`/`Retain` behavior in kind. It needs no production credentials.
+See [testing](docs/live-testing.md) for coverage boundaries and release smoke tests.
 
-```bash
-cargo fmt --all -- --check
-cargo clippy --locked --workspace --all-targets -- -D warnings
-cargo test --locked --workspace --all-targets
-```
+For contribution and security handling, read [CONTRIBUTING.md](CONTRIBUTING.md)
+and [SECURITY.md](SECURITY.md). Report suspected vulnerabilities privately rather
+than including credentials or decrypted values in public issues.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for contributor workflow, validation
-expectations, release-note labels, and security handling.
-
-## Contributing And Security
-
-Contributions are welcome. Keep secrets out of issues and pull requests, and
-include relevant validation commands in PRs.
-
-Report vulnerabilities privately through [SECURITY.md](SECURITY.md). Do not
-open public issues for credential leaks, secret-value exposure, auth bypasses,
-or selector-redaction failures.
-
-## License
-
-Apache-2.0. See [LICENSE](LICENSE).
+[Documentation index](docs/index.md) · [Roadmap](docs/roadmap.md) ·
+[Apache-2.0 license](LICENSE)

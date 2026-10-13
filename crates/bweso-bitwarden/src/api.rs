@@ -1521,7 +1521,7 @@ frW69DSxg6/fcNRyvdTH+twvVnzH
     }
 
     #[test]
-    fn name_lookup_skips_undecryptable_cipher_names() -> TestResult {
+    fn name_lookup_rejects_undecryptable_cipher_names() -> TestResult {
         let user_key = AuthenticatedSymmetricKey::from_base64(KEY_B64)?;
         let mut broken = serde_json::from_str::<EncryptedCipher>(LOGIN_CIPHER_JSON)?;
         broken.id = "broken-cipher".to_string();
@@ -1531,10 +1531,16 @@ frW69DSxg6/fcNRyvdTH+twvVnzH
             ciphers: vec![broken, valid],
         };
 
-        let decrypted =
-            BitwardenApiClient::resolve_synced_cipher(&sync, &user_key, "name:app/database")?;
-
-        assert_eq!(decrypted.id, "cipher-login");
+        // An unreadable item could share the requested name. Do not select
+        // a convenient match or report absence from an incomplete scan.
+        assert!(matches!(
+            BitwardenApiClient::resolve_synced_cipher(&sync, &user_key, "name:app/database"),
+            Err(BitwardenClientError::Cipher(_))
+        ));
+        // An exact ID remains usable when unrelated names are corrupt.
+        let selected =
+            BitwardenApiClient::resolve_synced_cipher(&sync, &user_key, "id:cipher-login")?;
+        assert_eq!(selected.id, "cipher-login");
         Ok(())
     }
 

@@ -49,6 +49,7 @@ jobs:
         uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
         with:
           prefix-key: interop
+          cache-on-failure: true
 
       - name: Set isolated kubeconfig
         run: echo "KUBECONFIG=${RUNNER_TEMP}/bweso-interop.kubeconfig" >> "${GITHUB_ENV}"
@@ -86,7 +87,12 @@ jobs:
 
       - name: Check both KDFs and actual ESO deletion semantics
         run: |
-          gateway="$(docker network inspect kind --format '{{(index .IPAM.Config 0).Gateway}}')"
+          gateway="$(docker inspect bweso-interop-control-plane --format '{{(index .NetworkSettings.Networks "kind").Gateway}}')"
+          if [ -z "${gateway}" ]; then
+            network_id="$(docker network inspect kind --format '{{.Id}}')"
+            gateway="$(ip -j -4 address show dev "br-${network_id:0:12}" | jq -r '.[0].addr_info[] | select(.scope == "global") | .local' | head -1)"
+          fi
+          test -n "${gateway}"
           "${RUNNER_TEMP}/interop-venv/bin/python" scripts/vaultwarden-smoke.py \
             --binary target/debug/vaultwarden-eso-provider \
             --kubeconfig "${KUBECONFIG}" --kind-gateway "${gateway}"

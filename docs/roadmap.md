@@ -1,155 +1,59 @@
 # Roadmap
 
-This roadmap records shipped release lines and remaining follow-up work.
+This project should remain a small Vaultwarden-to-ESO bridge. ESO owns the
+Kubernetes lifecycle; another controller, CRD or rollout engine is not a goal.
+Released history belongs in the [changelog](../CHANGELOG.md), and publishing
+requirements belong in the [release checklist](public-release-checklist.md).
 
-## Unreleased
+## Qualify the next release
 
-- **Bounded stale cache**: operators can opt in to serving a previous successful
-  sync for a fixed window after transient upstream failures. Retry throttling
-  prevents an ESO request burst from becoming an upstream login burst, and a
-  dedicated metric exposes every stale resolve.
-- **Capability-scoped webhook authentication**: a Secret-mounted JSON policy
-  defines independent token sets and selector allowlists. The capability and
-  global selector policies are intersected, tokens are retained only as SHA-256
-  digests, and invalid reloads keep the last known-good policy.
+The Argon2 interoperability fix, conservative deletion signals, bounded KDF
+work, scoped authentication and optional stale cache are unreleased. Release
+qualification must test the exact candidate chart/image, not just source code.
 
-## v0.4.0
+Acceptance requires a passing current-head CI and interoperability run, release
+artifact verification, and deliberate upgrade/rollback tests. Repeat the
+Bitwarden Cloud smoke because the unlock path changed; historical PBKDF2 smoke
+evidence must not be presented as current Argon2 or Cloud verification.
+A maintainer must explicitly authorize publication.
 
-Released after `v0.3.0`:
+## Failure behavior and operating evidence
 
-- **Bounded upstream responses**: successful sync payloads are capped at 32 MiB,
-  and authenticated response bodies have their own read deadline.
-- **Unambiguous whole-item documents**: duplicate keys across login fields,
-  notes, TOTP, SSH fields, and custom fields fail closed instead of silently
-  overwriting one another.
-- **Concurrent fresh-cache reads**: cached decrypts use a read lock while cache
-  refreshes remain serialized.
-- **Actionable error metrics**: missing items and missing properties have
-  distinct error kinds, with dedicated timeout and oversized-payload outcomes.
+Measure cold-start unlock cost, fresh-cache throughput, full-vault refresh
+latency and memory using representative small and larger vaults. Include
+CPU-throttled pods and account KDF settings within the configured budget.
+The current name lookup scans/decrypts personal items; prefer exact IDs.
 
-## v0.3.0
+Add concurrent failure/backoff tests before changing refresh semantics. The
+current refresh lock serializes work, but in default fail-closed mode it does
+not share an error/backoff across waiting requests. The optional stale window
+throttles retries only while an eligible previous snapshot can be served.
+Do not confuse single-flight success with outage-rate limiting.
 
-Released after `v0.2.1`:
+Record a defined soak interval and recovery exercises: upstream outage,
+revocation, password rotation, provider restart, source trash and target Secret
+recreation. A deployment existing for months is not evidence of these tests.
 
-- **Deny-by-default selector policy**: public installs must configure reviewed
-  selectors or explicitly opt in to allow-all behavior.
-- **Deny-by-default NetworkPolicy rendering**: enabling the chart's
-  NetworkPolicy without cluster-specific ingress/egress rules no longer opens
-  traffic by default.
-- **Release evidence hardening**: release checks now verify GitHub Release
-  body/assets, chart evidence, signing, and attestations.
+## Protocol assurance
 
-## v0.2.1
+Arrange an independent review of KDF handling, key unwrap, cipher parsing,
+zeroization boundaries and deletion signals. Add fuzz targets beyond the
+existing encrypted-string parser where they test meaningful invariants.
+Passing tests and coverage do not constitute an audit.
 
-Released after `v0.2.0`:
+Assess organization/shared-item support separately. Require independently
+created personal/organization/per-item key fixtures, wrong-key rejection,
+least-privilege account guidance and actual backend verification before
+advertising it. This is the main feature gap for team adoption; it is not a
+safe opportunistic cleanup change.
 
-- **Hot-reloadable selector policy**: `BWESO_ALLOWED_KEYS_FILE` /
-  `BWESO_ALLOWED_KEY_PREFIXES_FILE` plus `BWESO_POLICY_RELOAD_INTERVAL_SECONDS`
-  and the `selectorPolicy.configMap` Helm values. A ConfigMap-sourced
-  allow-list is re-read on an interval and hot-swapped, so onboarding an item
-  no longer requires a provider restart. No file configured ⇒ behavior is
-  unchanged; a configured file that evaluates to zero entries is an error
-  (no fail-open); reload outcomes are exported as metrics. See
-  [`decisions/0004-hot-reloadable-selector-policy.md`](decisions/0004-hot-reloadable-selector-policy.md).
+## Conditional work
 
-## v0.1.x
+Add attachments only after agreeing on size limits, mapping and key handling.
+Consider a native ESO provider only when the webhook contract demonstrably
+blocks required behavior. Keep built-in workload restarts, dynamic credentials,
+Bitwarden Secrets Manager and a separate Kubernetes operator out of scope.
 
-The first public release includes:
-
-- Bitwarden Password Manager and Vaultwarden vault-item sync through External
-  Secrets Operator's generic webhook provider.
-- Bitwarden-compatible user API-key login, master-password unlock, vault sync,
-  and local item decryption.
-- PBKDF2-SHA256 and Argon2id account KDF support.
-- Vaultwarden/single-origin endpoints and Bitwarden Cloud split endpoints.
-- Single-field `remoteRef` resolution and whole-item `dataFrom.extract`
-  resolution.
-- `id:<item-id>` and `name:<item-name>` selectors; unprefixed bare keys
-  rejected with `400 validation`.
-- Provider-side selector allowlists for exact keys and key prefixes.
-- Explicit hard failures for unsupported shared organization items and
-  attachments.
-- Redacted logs, public error bodies, and low-cardinality Prometheus metrics.
-- Health probes, graceful shutdown readiness behavior, and cache metrics.
-- Helm chart, ESO examples, NetworkPolicy examples, Reloader example,
-  PrometheusRule example, Grafana dashboard, threat model, release checklist,
-  and live smoke-test script.
-- Multi-arch release workflow with GHCR image publishing, SBOM/provenance,
-  release image scanning, GHCR OCI Helm chart publishing, and Helm chart
-  attachment to GitHub Releases.
-- Live smoke verification against Vaultwarden and Bitwarden Cloud using the
-  exact release chart and image.
-
-## v0.2 (Rename + Vaultwarden-First Repositioning)
-
-`v0.2` is the rename and repositioning boundary. `v0.1.x` had no real users,
-so this is a hard rename: the old GHCR image package and OCI chart are
-deleted, old tags are yanked, no compatibility shim is kept. Targeted scope:
-
-- Renamed the GitHub repository, binary crate, container image, and Helm
-  chart to `vaultwarden-eso-provider`. The crate prefix `bweso-` (which
-  refers to the Bitwarden-compatible API surface) stays; only the binary
-  crate, the chart, and the image moved.
-- Added **custom CA bundle support**: `BWESO_CA_BUNDLE_FILE` env / CLI arg
-  plus `caBundle.pem` and `caBundle.existingSecret` Helm values. The bundle
-  supplements the bundled WebPKI trust roots and is the path for Vaultwarden
-  installs on a private CA.
-- Added a **concurrency cap on `/v1/resolve`** via a tokio Semaphore in the
-  handler. Excess concurrent requests are shed with `503 overloaded`.
-  Configurable via `BWESO_RESOLVE_CONCURRENCY_LIMIT` (default 16) and the
-  `config.resolveConcurrencyLimit` Helm value. Per-source rate limiting
-  remains a follow-up item.
-- Collapse the six `BitwardenApiClient` constructors into a single
-  `with_options(BitwardenApiClientOptions)` form.
-- Replace the hand-rolled `constant_time_eq` with the `subtle` crate (or the
-  `constant_time_eq` crate) so the project does not ship its own
-  constant-time comparison.
-- Replace the hand-rolled Prometheus emitter with `metrics-exporter-prometheus`:
-  **no** (see [`decisions/0003-keep-handrolled-prometheus-emitter.md`](decisions/0003-keep-handrolled-prometheus-emitter.md)).
-- Added cargo-fuzz target on `EncryptedString::from_str` at
-  `crates/bweso-bitwarden/fuzz/`. The target asserts that no input panics;
-  malformed bytes must surface as typed errors. Run weekly + on-demand via
-  `.github/workflows/fuzz.yml`. Seeded corpus covers valid type-2 strings,
-  legacy type-0 (rejected), and empty input.
-- Adopt the Bitwarden Password Manager SDK Rust crates: **no** (see
-  [`decisions/0002-do-not-adopt-bitwarden-sdk.md`](decisions/0002-do-not-adopt-bitwarden-sdk.md)).
-
-## After v0.2
-
-Higher-effort follow-up work:
-
-- Add disposable Vaultwarden-in-kind integration coverage. Do not keep a failing
-  workflow or dead shell bootstrap script in the release tree. The blocker is
-  the user-registration crypto step:
-  Vaultwarden's `/api/accounts/register` expects a real Bitwarden registration
-  payload (PBKDF2 master key, stretched user key, RSA keypair) that is
-  impractical to assemble in shell. The recommended implementation is a small
-  `vaultwarden-test-bootstrap` binary inside the workspace that uses the
-  `bweso-bitwarden` crypto primitives to register the user and plant an item,
-  followed by a workflow that runs the existing Helm + ESO smoke path against
-  that disposable Vaultwarden instance.
-- Add **organization / shared item decryption** after fixture coverage,
-  key-handling review, and live verification against both Vaultwarden and
-  Bitwarden Cloud. This is the gap that excludes most team-scale users today.
-- Add attachment metadata lookup, download, decryption, and Kubernetes
-  mapping only after the UX and security model are clear.
-- Assess whether a native ESO provider would remove webhook operational
-  friction without duplicating ESO's lifecycle semantics.
-- Decide whether a GitHub Pages chart repository is worth the extra release
-  surface for users who cannot consume OCI charts.
-- Revisit a native Kubernetes controller only if ESO cannot cover important
-  workflows cleanly.
-- Expand fuzzing beyond the encrypted-string parser and add property tests on
-  URL/path construction.
-- Consolidate the governance / readiness / release-checklist documents,
-  which currently overlap.
-
-## Not Planned For v0.1.x
-
-- Bitwarden Secrets Manager (`bws`) support. Use Bitwarden's official Secrets
-  Manager integrations for that product surface.
-- Built-in application workload restarts. Use ESO refreshes, Reloader, checksum
-  annotations, or GitOps rollout mechanisms.
-- Property-level selector policy. The current selector policy gates item keys;
-  isolate stricter trust boundaries with dedicated provider credentials and
-  exact `id:` allowlists.
+Review documentation and release automation when they impose more maintenance
+than value. Do not add dashboards, badges or governance files as a substitute
+for interoperability and operational evidence.

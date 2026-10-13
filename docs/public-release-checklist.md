@@ -27,7 +27,8 @@ Required before calling a release generally usable:
   and `CODEOWNERS`.
 - Apply the GitHub repository settings documented in
   [`repository-governance.md`](repository-governance.md).
-- Confirm the release branch is clean, pushed, and CI is green.
+- Confirm the release branch is clean, pushed, and both CI and the disposable
+  `Vaultwarden and ESO` check pass on the exact candidate commit.
 - Confirm `main` branch protection and release tag protection are active.
 - Confirm merged PRs have release-note labels that match
   [`.github/release.yml`](../.github/release.yml), and update
@@ -103,5 +104,4 @@ commands.
 Nice to have before `v1.0.0`:
 
 - Native ESO provider assessment if the webhook contract becomes limiting.
-- Disposable local kind integration coverage that does not need private
-  credentials.
+- Recorded soak/recovery evidence and a focused independent protocol review.

@@ -104,6 +104,12 @@ jobs:
           --set metrics.serviceMonitor.enabled=true
           --set-string 'metrics.serviceMonitor.labels.release=prometheus'
 
+      - name: Validate live-smoke safety contracts
+        run: bash scripts/live-smoke-contracts.sh
+
+      - name: Validate local documentation links
+        run: python3 scripts/check-doc-links.py
+
       - name: Validate documentation
         run: npx --yes markdownlint-cli2@0.22.1 '**/*.md'
 
