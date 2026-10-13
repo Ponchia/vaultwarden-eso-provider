@@ -26,7 +26,7 @@ import uuid
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
-from cryptography.x509.oid import NameOID
+from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 
 spec = importlib.util.spec_from_file_location("synthetic_fixture", Path(__file__).with_name("vaultwarden-smoke.py"))
 if spec is None or spec.loader is None:
@@ -50,9 +50,18 @@ class PrivateCAProxy:
             .add_extension(x509.SubjectAlternativeName([x509.IPAddress(ipaddress.ip_address(gateway))]), critical=False)
             .sign(key, hashes.SHA256()))
         self.pem = cert.public_bytes(serialization.Encoding.PEM).decode()
+        leaf_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        leaf = (x509.CertificateBuilder().subject_name(x509.Name([
+                x509.NameAttribute(NameOID.COMMON_NAME, "Disposable fixture TLS")]))
+            .issuer_name(name).public_key(leaf_key.public_key()).serial_number(x509.random_serial_number())
+            .not_valid_before(now - timedelta(minutes=1)).not_valid_after(now + timedelta(hours=1))
+            .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
+            .add_extension(x509.SubjectAlternativeName([x509.IPAddress(ipaddress.ip_address(gateway))]), critical=False)
+            .add_extension(x509.ExtendedKeyUsage([ExtendedKeyUsageOID.SERVER_AUTH]), critical=False)
+            .sign(key, hashes.SHA256()))
         cert_path, key_path = directory / "fixture-ca.pem", directory / "fixture-tls.key"
-        cert_path.write_text(self.pem)
-        key_path.write_bytes(key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8,
+        cert_path.write_bytes(leaf.public_bytes(serialization.Encoding.PEM))
+        key_path.write_bytes(leaf_key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8,
                                              serialization.NoEncryption()))
         key_path.chmod(0o600)
 
@@ -123,7 +132,7 @@ class HelmProvider:
             repository, tag = args.image.rsplit(":", 1)
             values = {"fullnameOverride": "provider", "image": {"repository": repository, "tag": tag, "pullPolicy": "Never"},
                 "credentials": {"existingSecret": {"name": "provider-credentials"}},
-                "config": {"singleOriginUrl": self.proxy.url, "cacheTtlSeconds": 1, "cacheRefreshRetryIntervalSeconds": 0},
+                "config": {"singleOriginUrl": self.proxy.url, "cacheTtlSeconds": 1},
                 "caBundle": {"pem": self.proxy.pem},
                 "selectorPolicy": {"allowedKeys": env["BWESO_ALLOWED_KEYS"].split(",")}}
             # Values hold only reference names, public fixture CA and synthetic selectors.
@@ -133,7 +142,10 @@ class HelmProvider:
                                   "--wait", "--timeout", "180s"], timeout=210)
             self.image_id = self.run(self.kube + ["-n", self.namespace, "get", "pod", "-l", "app.kubernetes.io/instance=provider",
                                                "-o", "jsonpath={.items[0].status.containerStatuses[0].imageID}"]).strip()
-            require(self.image_id.endswith(args.image_id), "running pod does not match the built image identity")
+            runtime_image = json.loads(self.run(["docker", "exec", "bweso-interop-control-plane",
+                                                "crictl", "inspecti", self.image_id]))
+            require(runtime_image["status"]["id"].endswith(args.image_id),
+                    "running pod does not match the built image identity")
             with socket.socket() as sock:
                 sock.bind(("127.0.0.1", 0))
                 self.port = sock.getsockname()[1]
@@ -188,6 +200,36 @@ class HelmProvider:
         eventually(lambda: (lambda r: r[0] == 200 and r[1]["data"]["value"] == expected)(resolve()),
                    "Helm rollback did not restore working configuration", 120)
 
+    def cross_version_probe(self, resolve: Any, kdf_name: str, expected: str, eso: Any) -> None:
+        if not self.args.baseline_chart:
+            return
+        candidate_values = json.loads(self.values_path.read_text())
+        baseline_values = dict(candidate_values)
+        repository, tag = self.args.baseline_image.rsplit(":", 1)
+        baseline_values["image"] = {"repository": repository, "tag": tag, "pullPolicy": "Never"}
+        baseline_path = self.directory / "baseline-values.json"
+        baseline_path.write_text(json.dumps(baseline_values))
+        # We already restored the candidate by configuration rollback; capture that revision.
+        history = json.loads(self.run(self.helm + ["history", "provider", "--output", "json"]))
+        candidate_revision = str(history[-1]["revision"])
+        self.stop_forward()
+        self.run(self.helm + ["upgrade", "provider", str(self.args.baseline_chart), "-f", str(baseline_path),
+                              "--wait", "--timeout", "180s"], timeout=210)
+        self.start_forward()
+        status, document = resolve()
+        if kdf_name == "pbkdf2":
+            require(status == 200 and document["data"]["value"] == expected,
+                    "released PBKDF2 chart/image rollback failed")
+        else:
+            require(status not in (200, 404), "known-incompatible released Argon2 path did not fail conservatively")
+        require(eso.values_equal(expected), "cross-version rollback lost an existing ESO target")
+        self.stop_forward()
+        self.run(self.helm + ["rollback", "provider", candidate_revision, "--wait", "--timeout", "180s"], timeout=210)
+        self.start_forward()
+        eventually(lambda: (lambda r: r[0] == 200 and r[1]["data"]["value"] == expected)(resolve()),
+                   "return to candidate after released-version rollback failed", 120)
+        eventually(lambda: eso.values_equal(expected), "cross-version recovery lost target values", 120)
+
     def poll(self) -> int | None:
         return self.forward.poll() if self.forward else 0
 
@@ -219,16 +261,20 @@ def main() -> None:
     parser.add_argument("--image-id", required=True)
     parser.add_argument("--kubeconfig", type=Path, required=True)
     parser.add_argument("--kind-gateway", required=True)
+    parser.add_argument("--baseline-chart", type=Path)
+    parser.add_argument("--baseline-image", default="bweso-baseline:0.4.0")
     args = parser.parse_args()
     require(os.environ.get("GITHUB_ACTIONS") == "true", "packaged fixture runs only in disposable GitHub CI")
     require(args.chart.is_file() and args.chart.suffix == ".tgz", "an exact packaged chart is required")
+    if args.baseline_chart:
+        require(args.baseline_chart.is_file(), "released baseline archive is missing")
     current = HelmProvider.run(["kubectl", "--kubeconfig", str(args.kubeconfig), "config", "current-context"]).strip()
     require(current == "kind-bweso-interop", "refusing a non-fixture cluster")
     eventually(lambda: fixture.request("http://127.0.0.1:8081/alive")[0] == 200, "disposable backend not ready", 90)
     for kdf in ("pbkdf2", "argon2"):
         fixture.account_fixture("http://127.0.0.1:8081", Path("/unused"), kdf, args.kubeconfig, args.kind_gateway,
                                 lambda env, log, directory: HelmProvider(args, env, log, directory))
-        print(f"PASS: {kdf}: packaged chart/image identity, private CA TLS, restart, target recreation, config upgrade/rollback", flush=True)
+        print(f"PASS: {kdf}: packaged chart/image identity, private CA TLS, restart, target recreation, config upgrade/rollback, released baseline recovery", flush=True)
 
 
 if __name__ == "__main__":

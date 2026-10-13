@@ -34,6 +34,7 @@ jobs:
       KIND_VERSION: v0.33.0
       KIND_IMAGE: kindest/node:v1.35.8@sha256:07b2536e30b803ed61d1677a79df6115f798ce64c80f9e22f6ed45afd09323c0
       ESO_CHART_VERSION: 2.12.0
+      BASELINE_IMAGE: ghcr.io/ponchia/vaultwarden-eso-provider@sha256:77afff765360fd359c8215c9d02c09c09b0f23e9a78c605008c66063ab704cba
     services:
       vaultwarden:
         image: vaultwarden/server:1.37.4@sha256:efb3cde962015fcc036b2ea625242248611943b27212ebf4392841fb30fad055
@@ -79,6 +80,13 @@ jobs:
           docker cp "${container}:/usr/local/bin/vaultwarden-eso-provider" "${RUNNER_TEMP}/public-artifacts/provider-linux-${ARCH}"
           docker rm "${container}"
           docker save "${image}" | gzip -n > "${RUNNER_TEMP}/public-artifacts/image-linux-${ARCH}.tar.gz"
+      - name: Fetch immutable released baseline for migration tests
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location https://github.com/Ponchia/vaultwarden-eso-provider/releases/download/v0.4.0/vaultwarden-eso-provider-0.4.0.tgz -o "${RUNNER_TEMP}/baseline-chart.tgz"
+          printf '%s  %s\n' a54f34003b5bb58768a1d2862c3e1b558634e5f2438351a7943f78b5d45b18a7 "${RUNNER_TEMP}/baseline-chart.tgz" | sha256sum --check
+          docker pull "${BASELINE_IMAGE}"
+          docker tag "${BASELINE_IMAGE}" bweso-baseline:0.4.0
       - name: Create disposable cluster and install ESO
         run: |
           set -euo pipefail
@@ -88,6 +96,7 @@ jobs:
           echo "${RUNNER_TEMP}" >> "${GITHUB_PATH}"
           "${RUNNER_TEMP}/kind" create cluster --name bweso-interop --image "${KIND_IMAGE}" --kubeconfig "${KUBECONFIG}" --wait 120s
           "${RUNNER_TEMP}/kind" load docker-image "${QUALIFICATION_IMAGE}" --name bweso-interop
+          "${RUNNER_TEMP}/kind" load docker-image bweso-baseline:0.4.0 --name bweso-interop
           docker cp bweso-interop-control-plane:/usr/bin/kubectl "${RUNNER_TEMP}/kubectl"
           chmod +x "${RUNNER_TEMP}/kubectl"
           helm repo add external-secrets https://charts.external-secrets.io
@@ -105,6 +114,7 @@ jobs:
           chart="$(find "${RUNNER_TEMP}/public-artifacts" -maxdepth 1 -name '*.tgz' -print)"
           "${RUNNER_TEMP}/qualification-venv/bin/python" scripts/artifact-smoke.py --chart "${chart}" \
             --image "${QUALIFICATION_IMAGE}" --image-id "${QUALIFICATION_IMAGE_ID}" \
+            --baseline-chart "${RUNNER_TEMP}/baseline-chart.tgz" \
             --kubeconfig "${KUBECONFIG}" --kind-gateway "${gateway}"
       - name: Record public artifact identities only
         run: |

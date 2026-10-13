@@ -265,6 +265,8 @@ def account_fixture(base: str, binary: Path, kdf_name: str,
                                "packaged provider did not recover after restart", 120)
                     process.rollback_probe(resolve, kdf_name, value)
                     if eso:
+                        process.cross_version_probe(resolve, kdf_name, value, eso)
+                    if eso:
                         eso.run(["-n", eso.namespace, "delete", "secret", "target-delete"])
                         eventually(lambda: eso.values_equal(value), "ESO did not recreate the removed target", 120)
                 rotated = secrets.token_urlsafe(28)
