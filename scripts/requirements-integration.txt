@@ -1,0 +1,3 @@
+# Independent fixture tooling, not runtime dependencies.
+argon2-cffi==25.1.0
+cryptography==50.0.2
