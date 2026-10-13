@@ -9,6 +9,8 @@ from pathlib import Path
 import re
 import subprocess
 
+from release_bundle import verify as verify_bundle
+
 TAG = re.compile(r"v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?")
 SHA = re.compile(r"[0-9a-f]{40}")
 DIGEST = re.compile(r"sha256:[0-9a-f]{64}")
@@ -72,6 +74,23 @@ def main() -> None:
          "/charts/vaultwarden-eso-provider", "--version", tag[1:], "--destination", str(oci_dir)])
     require(hashlib.sha256((oci_dir / chart.name).read_bytes()).hexdigest() == chart_sha,
             "OCI chart differs from signed release archive")
+    # Bind the registry identity as well as the chart layer bytes.
+    chart_ref = "ghcr.io/" + repo.split('/')[0].lower() + "/charts/vaultwarden-eso-provider:" + tag[1:]
+    registry_manifest = json.loads(run(["docker", "buildx", "imagetools", "inspect", chart_ref,
+                                        "--format", "{{json .Manifest}}"] ))
+    require(registry_manifest.get("digest") == chart_digest, "OCI chart manifest digest differs from release evidence")
+    run(["gh", "release", "download", tag, "--repo", repo, "--dir", str(destination),
+         "--pattern", "SHA256SUMS", "--pattern", "SHA256SUMS.sigstore.json",
+         "--pattern", "release-manifest.json", "--pattern", "release-readiness.json", "--pattern", "THIRD-PARTY-LICENSES.txt",
+         "--pattern", "vaultwarden-eso-provider-*-linux-*.tar.gz", "--pattern", "sbom-linux-*.spdx.json"])
+    sums = destination / "SHA256SUMS"
+    run(["cosign", "verify-blob", "--bundle", str(sums) + ".sigstore.json", *certificate, str(sums)])
+    run(["gh", "attestation", "verify", str(sums), *provenance])
+    verify_bundle(destination)
+    manifest = json.loads((destination / "release-manifest.json").read_text())
+    require(manifest["sourceRevision"] == revision and manifest["version"] == tag[1:]
+            and manifest["imageIndexDigest"] == image_digest and manifest["ociChartDigest"] == chart_digest,
+            "signed distribution inventory differs from release identities")
     run(["docker", "pull", image])
     run(["docker", "tag", image, "bweso-candidate:" + revision])
     with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as output:

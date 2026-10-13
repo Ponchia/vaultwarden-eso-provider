@@ -1,11 +1,20 @@
-# 0.5.0-rc.1 upgrade notes
+# 0.5.0 upgrade notes
 
-This is a prerelease of the Vaultwarden-to-ESO bridge. Independent native
-AMD64/ARM64 package tests exercise Vaultwarden with both PBKDF2 and Argon2,
-private-CA TLS, authorization, source rotation, deletion behavior and rollback.
-Fresh Bitwarden Cloud acceptance is still incomplete (#75). External review
-and a defined load/soak qualification remain deferred (#76). This is not a
-claim of general availability or an independent security audit.
+These notes describe the prepared 0.5.0 source, not a publication announcement.
+The GitHub Releases page is the source of truth for available versions. Stable
+publication requires the source-bound Cloud acceptance record to pass; the
+current state is documented in [stable readiness](stable-readiness.md).
+
+The 0.5.0 distribution adds native AMD64/ARM64 archives, exact executable and
+Cargo dependency SPDX inventories, dependency notices and a signed complete
+release checksum inventory. Native archives contain the same executable as the
+container image. The lockfile fixes five optional QUIC advisories; the provider
+does not enable HTTP/3. Whole-lock auditing prevents inactive dependencies from
+being overlooked by configured-graph security checks.
+
+Independent external review and a defined load/soak qualification remain
+separate in #76. Pre-1.0 stable does not imply an independent security audit,
+long-term support or support for organization/shared items and attachments.
 
 ## Changes operators must account for
 

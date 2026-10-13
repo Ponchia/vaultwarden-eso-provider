@@ -24,6 +24,11 @@ or general availability. Do not mark it latest or replace stable image aliases.
 
 Required before calling a release generally usable:
 
+- Pass `scripts/stable_readiness.py --tag v<version>` with current, source-bound
+  dedicated-account Cloud evidence; see [stable readiness](stable-readiness.md).
+- Verify the complete distribution manifest, signed checksums, both native
+  archives, SPDX inventories and dependency notices from public downloads.
+
 - Commit the public collaboration files: `CONTRIBUTING.md`, `SECURITY.md`,
   `CODE_OF_CONDUCT.md`, `SUPPORT.md`, issue templates, pull request template,
   and `CODEOWNERS`.

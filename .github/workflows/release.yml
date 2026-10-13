@@ -38,6 +38,10 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         run: bash scripts/verify-release-version.sh "${GITHUB_REF_NAME}"
 
+      - name: Require fresh Cloud evidence for stable publication
+        if: startsWith(github.ref, 'refs/tags/')
+        run: python3 scripts/stable_readiness.py --tag "${GITHUB_REF_NAME}"
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
         with:
@@ -124,6 +128,13 @@ jobs:
       - name: Install cargo-deny
         run: cargo install cargo-deny --version 0.19.5 --locked
 
+      - name: Install whole-lock vulnerability auditor
+        uses: taiki-e/install-action@ab6895351a88b908e96a4697860d4ffea5e57dbe # v2
+        with:
+          tool: cargo-audit@0.22.2
+      - name: Audit every locked dependency including inactive optional entries
+        run: cargo audit --file Cargo.lock
+
       - name: Cargo advisory and license policy
         run: cargo deny --locked check advisories licenses bans sources
 
@@ -200,6 +211,49 @@ jobs:
           cache-to: type=gha,mode=max,scope=${{ matrix.platform_slug }}
           sbom: true
           provenance: true
+
+      - name: Extract native binary from the published platform image
+        env:
+          PLATFORM_SLUG: ${{ matrix.platform_slug }}
+          PLATFORM_IMAGE: ${{ steps.image.outputs.name }}@${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          arch="${PLATFORM_SLUG#linux-}"
+          mkdir -p native-assets
+          docker pull "${PLATFORM_IMAGE}"
+          container="$(docker create "${PLATFORM_IMAGE}")"
+          trap 'docker rm -f "$container" >/dev/null' EXIT
+          docker cp "${container}:/usr/local/bin/vaultwarden-eso-provider" "${RUNNER_TEMP}/provider"
+          chmod +x "${RUNNER_TEMP}/provider"
+          test "$("${RUNNER_TEMP}/provider" --version)" = "vaultwarden-eso-provider ${version}"
+          python3 scripts/release_bundle.py package --binary "${RUNNER_TEMP}/provider" \
+            --license LICENSE --notices THIRD-PARTY-LICENSES.txt --arch "${arch}" \
+            --output "native-assets/vaultwarden-eso-provider-${version}-${PLATFORM_SLUG}.tar.gz"
+      - name: Install Cargo for locked release inventory
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          toolchain: 1.98.1
+      - name: Export locked runtime Cargo inventory
+        env:
+          PLATFORM_SLUG: ${{ matrix.platform_slug }}
+        run: |
+          python3 scripts/runtime_sbom.py --binary "${RUNNER_TEMP}/provider" \
+            --arch "${PLATFORM_SLUG#linux-}" --revision "${GITHUB_SHA}" \
+            --output "native-assets/sbom-${PLATFORM_SLUG}.spdx.json"
+      - name: Validate SPDX inventory before distribution
+        env:
+          PLATFORM_SLUG: ${{ matrix.platform_slug }}
+        run: bash scripts/validate-spdx.sh "native-assets/sbom-${PLATFORM_SLUG}.spdx.json"
+      - name: Retain native distribution files
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: native-release-${{ matrix.platform_slug }}
+          path: |
+            native-assets/*.tar.gz
+            native-assets/*.spdx.json
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Export digest
         run: |
@@ -453,6 +507,33 @@ jobs:
         with:
           subject-path: dist/*.tgz
 
+      - name: Download this run's native distribution files
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          pattern: native-release-*
+          path: dist
+          merge-multiple: true
+      - name: Build the complete release inventory
+        env:
+          RELEASE_IMAGE_DIGEST: ${{ needs.image.outputs.image_digest }}
+          RELEASE_CHART_DIGEST: ${{ steps.helm_push.outputs.digest }}
+        run: |
+          cp THIRD-PARTY-LICENSES.txt docs/release-readiness.json dist/
+          python3 scripts/release_bundle.py manifest --directory dist --version "${GITHUB_REF_NAME#v}" \
+            --revision "${GITHUB_SHA}" --image "${RELEASE_IMAGE_DIGEST}" --chart "${RELEASE_CHART_DIGEST}"
+          python3 scripts/release_bundle.py verify --directory dist
+          cosign sign-blob --yes --bundle dist/SHA256SUMS.sigstore.json dist/SHA256SUMS
+      - name: Attest complete distribution files
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-path: |
+            dist/*.tar.gz
+            dist/*.spdx.json
+            dist/THIRD-PARTY-LICENSES.txt
+            dist/release-manifest.json
+            dist/release-readiness.json
+            dist/SHA256SUMS
+
       - name: Generate release notes
         if: startsWith(github.ref, 'refs/tags/')
         env:
@@ -503,6 +584,11 @@ jobs:
           - Chart archive SHA256: \`${chart_sha}\`
           - Chart archive Sigstore bundle: \`${bundle_name}\`
           - Chart archive provenance: GitHub artifact attestation on the archive
+          - Release manifest: \`release-manifest.json\`
+          - Complete checksums: \`SHA256SUMS\`
+          - Checksum signature bundle: \`SHA256SUMS.sigstore.json\`
+          - Native distributions: Linux AMD64 and ARM64 archives, each containing the exact container binary and license notices
+          - Runtime SBOMs: SPDX JSON for both native architectures
 
           ## Verification
 
@@ -525,6 +611,12 @@ jobs:
           path: |
             dist/*.tgz
             dist/*.sigstore.json
+            dist/*.tar.gz
+            dist/*.spdx.json
+            dist/THIRD-PARTY-LICENSES.txt
+            dist/release-manifest.json
+            dist/release-readiness.json
+            dist/SHA256SUMS
 
       - name: Attach chart to GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
@@ -536,6 +628,12 @@ jobs:
           files: |
             dist/*.tgz
             dist/*.sigstore.json
+            dist/*.tar.gz
+            dist/*.spdx.json
+            dist/THIRD-PARTY-LICENSES.txt
+            dist/release-manifest.json
+            dist/release-readiness.json
+            dist/SHA256SUMS
 
       - name: Verify GitHub Release evidence
         if: startsWith(github.ref, 'refs/tags/')
@@ -560,7 +658,9 @@ jobs:
             exit 1
           fi
 
-          for asset in "$chart_name" "$bundle_name"; do
+          for asset in "$chart_name" "$bundle_name" SHA256SUMS SHA256SUMS.sigstore.json release-manifest.json release-readiness.json THIRD-PARTY-LICENSES.txt \
+            "vaultwarden-eso-provider-${GITHUB_REF_NAME#v}-linux-amd64.tar.gz" \
+            "vaultwarden-eso-provider-${GITHUB_REF_NAME#v}-linux-arm64.tar.gz" sbom-linux-amd64.spdx.json sbom-linux-arm64.spdx.json; do
             if ! jq -e --arg name "$asset" \
               '.assets[]? | select(.name == $name)' \
               "$release_json" >/dev/null; then
@@ -581,3 +681,16 @@ jobs:
               exit 1
             fi
           done
+
+      - name: Download and verify the public distribution
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          directory="${RUNNER_TEMP}/published-distribution"
+          mkdir -p "${directory}"
+          gh release download "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" --dir "${directory}"
+          python3 scripts/release_bundle.py verify --directory "${directory}"
+          cosign verify-blob --bundle "${directory}/SHA256SUMS.sigstore.json" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release.yml@refs/tags/${GITHUB_REF_NAME}" \
+            "${directory}/SHA256SUMS"
