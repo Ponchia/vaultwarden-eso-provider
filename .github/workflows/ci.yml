@@ -122,6 +122,9 @@ jobs:
       - name: Validate live-smoke safety contracts
         run: bash scripts/live-smoke-contracts.sh
 
+      - name: Test artifact qualification identity guards
+        run: python3 -m unittest discover -s scripts -p 'test_qualification_*.py'
+
       - name: Validate local documentation links
         run: python3 scripts/check-doc-links.py
 
