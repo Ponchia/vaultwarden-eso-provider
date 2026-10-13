@@ -34,7 +34,9 @@ This avoids relying on image scanners that cannot enumerate static Rust
 dependencies. Build-only and dev-only edges are excluded. The graph is declared
 source-dependency evidence, not a byte-level linker inventory or a guarantee
 that every embedded component has been identified. The notices and inventory
-are not a legal opinion or a security certification.
+are not a legal opinion or a security certification. CI validates every
+distributed inventory against the
+checksum-pinned upstream SPDX 2.3 schema.
 
 ## Remaining backend evidence
 

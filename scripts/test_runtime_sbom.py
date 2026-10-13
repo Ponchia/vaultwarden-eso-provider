@@ -29,6 +29,11 @@ class RuntimeSbomTests(unittest.TestCase):
         self.assertEqual({p['name'] for p in result['packages']},{'vaultwarden-eso-provider','dep'})
         self.assertEqual(len(result['relationships']),3)
 
+    def test_spdx_document_uses_standard_comment_field(self):
+        result = self.build()
+        self.assertIn("comment", result)
+        self.assertNotIn("documentComment", result)
+
     def test_no_private_cargo_paths_or_authors(self):
         serialized = json.dumps(self.build())
         self.assertNotIn('/private/',serialized)

@@ -157,6 +157,8 @@ jobs:
           python3 scripts/runtime_sbom.py --binary "${RUNNER_TEMP}/public-artifacts/provider-linux-${ARCH}" \
             --arch "${ARCH}" --revision "${QUALIFICATION_REVISION}" \
             --output "${RUNNER_TEMP}/public-artifacts/sbom-linux-${ARCH}.spdx.json"
+      - name: Validate distributed SPDX against the upstream schema
+        run: bash scripts/validate-spdx.sh "${RUNNER_TEMP}/public-artifacts/sbom-linux-${ARCH}.spdx.json"
       - name: Fetch immutable released baseline for migration tests
         run: |
           set -euo pipefail

@@ -87,7 +87,7 @@ def generate(metadata: dict, lock: dict, binary: bytes, arch: str, revision: str
             "name":f"vaultwarden-eso-provider-{packages[root]['version']}-linux-{arch}",
             "documentNamespace":f"https://github.com/Ponchia/vaultwarden-eso-provider/sbom/{revision}/{arch}/{executable_sha}",
             "creationInfo":{"creators":["Tool: bweso-runtime-sbom-1"], "created":datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')},
-            "documentComment":"Target-filtered normal Cargo dependency graph from the lockfile, plus exact executable checksum. Build-only/dev-only dependencies are excluded. No independent audit or binary composition guarantee.",
+            "comment":"Target-filtered normal Cargo dependency graph from the lockfile, plus exact executable checksum. Build-only/dev-only dependencies are excluded. No independent audit or binary composition guarantee.",
             "packages":[executable, *result], "relationships":relationships}
 
 
