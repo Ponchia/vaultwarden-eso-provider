@@ -24,11 +24,10 @@ latency and memory using representative small and larger vaults. Include
 CPU-throttled pods and account KDF settings within the configured budget.
 The current name lookup scans/decrypts personal items; prefer exact IDs.
 
-Add concurrent failure/backoff tests before changing refresh semantics. The
-current refresh lock serializes work, but in default fail-closed mode it does
-not share an error/backoff across waiting requests. The optional stale window
-throttles retries only while an eligible previous snapshot can be served.
-Do not confuse single-flight success with outage-rate limiting.
+Concurrent failed refreshes now share a cooldown without widening stale-cache
+eligibility. Extend measurements to large request bursts, cancellation and
+account revocation. Do not confuse bounded concurrency with per-caller rate
+limiting; a shared caller can still consume the global admission capacity.
 
 Record a defined soak interval and recovery exercises: upstream outage,
 revocation, password rotation, provider restart, source trash and target Secret

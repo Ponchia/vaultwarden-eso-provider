@@ -49,6 +49,8 @@ Protect `main` with these rules:
   - `Docker`
   - `CodeQL Rust`
   - `CodeQL Actions`
+  - `Minimum Rust`
+  - `Vaultwarden and ESO`
 - Include administrators.
 - Block force pushes.
 - Block deletions.

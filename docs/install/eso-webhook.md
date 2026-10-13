@@ -399,3 +399,11 @@ ESO webhook timeouts are 90 seconds to accommodate the two upstream deadlines
 and KDF work; measure the cold path for your account and pod resources. Never
 reduce an account's KDF simply to fit a pod limit. See
 [failure and recovery](../operations/failure-and-recovery.md).
+
+## Refresh failure cooldown
+
+On unreleased `main`, `config.cacheRefreshRetryIntervalSeconds` also throttles
+failed refreshes when no stale snapshot is usable, including cold-cache and
+authentication failures. During the cooldown, resolves fail closed with HTTP
+503 `upstream_backoff`. This setting does not enable stale reads. The default
+is 15 seconds; set it to `0` only to deliberately retry every resolve.

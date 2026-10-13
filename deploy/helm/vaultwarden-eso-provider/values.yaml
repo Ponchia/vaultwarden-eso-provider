@@ -58,8 +58,8 @@ config:
   # sync can be served after transport errors, HTTP 408/429, or HTTP 5xx.
   # 0 preserves fail-closed behavior for every upstream refresh failure.
   cacheStaleIfErrorSeconds: 0
-  # Minimum delay between upstream refresh attempts while stale data is served.
-  # 0 retries on every resolve request.
+  # Cooldown after any failed refresh, even without an eligible stale cache.
+  # This does not enable stale reads. 0 retries on every resolve request.
   cacheRefreshRetryIntervalSeconds: 15
   httpConnectTimeoutSeconds: 5
   httpRequestTimeoutSeconds: 25

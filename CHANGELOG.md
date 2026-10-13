@@ -10,6 +10,11 @@ before release so generated notes land in the right category.
 
 ## Unreleased
 
+- Throttle failed refresh bursts even with a cold cache or authentication
+  failure; cooldown responses fail closed and never grant stale reads.
+- Raise the declared Rust minimum to 1.89 to match the selected AES dependency,
+  and add a locked all-target build check on that minimum compiler.
+
 - Add independently bootstrapped Vaultwarden/ESO CI without private credentials.
 - Require explicit test account opt-in/context for release smoke testing; never
   adopt or clean an existing namespace or persist credentials in apply metadata.

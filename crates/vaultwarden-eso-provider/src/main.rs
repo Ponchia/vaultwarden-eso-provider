@@ -86,8 +86,9 @@ struct Args {
     /// refresh failure. Disabled by default.
     #[arg(long, env = "BWESO_CACHE_STALE_IF_ERROR_SECONDS", default_value_t = 0)]
     cache_stale_if_error_seconds: u64,
-    /// Minimum seconds between upstream refresh attempts while stale data is
-    /// being served. Set to 0 to retry on every resolve request.
+    /// Minimum seconds between failed upstream refresh attempts, including
+    /// cold-cache and authentication failures. This never enables stale reads.
+    /// Set to 0 to retry on every resolve request.
     #[arg(
         long,
         env = "BWESO_CACHE_REFRESH_RETRY_INTERVAL_SECONDS",
@@ -1048,6 +1049,9 @@ fn provider_status_and_kind(error: &BitwardenClientError) -> (StatusCode, &'stat
         BitwardenClientError::Api(BitwardenApiError::UnsupportedSharedItem) => {
             (StatusCode::UNPROCESSABLE_ENTITY, "unsupported_shared_item")
         }
+        BitwardenClientError::Api(BitwardenApiError::RefreshThrottled) => {
+            (StatusCode::SERVICE_UNAVAILABLE, "upstream_backoff")
+        }
         BitwardenClientError::Api(BitwardenApiError::Http(_)) => {
             (StatusCode::BAD_GATEWAY, "upstream_http")
         }
@@ -1100,6 +1104,9 @@ fn public_error_message(error_kind: &str) -> &'static str {
         "unsupported_shared_item" => "shared organization Bitwarden items are not supported",
         "upstream_http" => "Bitwarden-compatible upstream request failed",
         "upstream_status" => "Bitwarden-compatible upstream returned an error status",
+        "upstream_backoff" => {
+            "upstream refresh recently failed; retry after the configured cooldown"
+        }
         "upstream_payload" => "Bitwarden-compatible upstream returned an invalid payload",
         "crypto" => "failed to decrypt selected Bitwarden item",
         "key_derivation" => "failed to unlock Bitwarden vault key",
@@ -1684,7 +1691,7 @@ frW69DSxg6/fcNRyvdTH+twvVnzH
 
         assert!(error
             .to_string()
-            .contains("failed to stat allowed_key_file"));
+            .contains("failed to open allowed_key_file"));
     }
 
     #[test]

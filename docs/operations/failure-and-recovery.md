@@ -33,9 +33,12 @@ decryption errors are not turned into stale success. A cached secret may still
 be old even after the source credential or value changes; caching is not
 instant revocation.
 
-The normal refresh lock prevents overlapping refreshes, not every repeated
-failed refresh. Set reasonable ESO refresh intervals and watch refresh failure
-metrics during outages. Do not enable stale data just to hide a persistent
+Failed refreshes share a cooldown, including cold-cache and authentication
+failures. During it the provider fails closed with HTTP 503 `upstream_backoff`
+unless the separate stale policy already permits a cached value. The default
+cooldown is 15 seconds; `cacheRefreshRetryIntervalSeconds: 0` restores per-request
+retries. Watch refresh failures and resolve error metrics during outages.
+Do not enable stale data just to hide a persistent
 credential/configuration failure. Existing Kubernetes Secrets are governed by
 ESO policies, not erased by this provider.
 

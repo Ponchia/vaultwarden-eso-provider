@@ -42,7 +42,8 @@ pub struct BitwardenApiClient {
     device: BitwardenDevice,
     cache_config: BitwardenCacheConfig,
     cache: Arc<RwLock<Option<CachedVault>>>,
-    refresh_lock: Arc<Mutex<()>>,
+    // Serializes refresh and retains the cooldown after a failed attempt.
+    refresh_lock: Arc<Mutex<Option<Instant>>>,
     unlock_semaphore: Arc<Semaphore>,
     argon2_memory_limit_mib: u32,
     metrics: Arc<CacheMetricState>,
@@ -88,7 +89,7 @@ impl BitwardenApiClient {
             device,
             cache_config,
             cache: Arc::new(RwLock::new(None)),
-            refresh_lock: Arc::new(Mutex::new(())),
+            refresh_lock: Arc::new(Mutex::new(None)),
             unlock_semaphore: Arc::new(Semaphore::new(1)),
             argon2_memory_limit_mib,
             metrics: Arc::new(CacheMetricState::default()),
@@ -261,13 +262,18 @@ impl BitwardenApiClient {
             return Ok(());
         }
 
-        let _guard = self.refresh_lock.lock().await;
+        let mut retry_after = self.refresh_lock.lock().await;
         if self.reuse_cached_sync_if_available().await {
             return Ok(());
         }
 
+        if retry_after.is_some_and(|deadline| Instant::now() < deadline) {
+            return Err(BitwardenApiError::RefreshThrottled.into());
+        }
+
         let refreshed = match self.fetch_vault().await {
             Ok(refreshed) => {
+                *retry_after = None;
                 self.metrics
                     .refresh_successes
                     .fetch_add(1, Ordering::Relaxed);
@@ -275,6 +281,11 @@ impl BitwardenApiClient {
                 refreshed
             }
             Err(error) => {
+                // Share the cooldown even for a cold cache or auth failure.
+                // This never grants stale reads: the separate eligibility
+                // check below remains authoritative for serving any value.
+                let now = Instant::now();
+                *retry_after = now.checked_add(self.cache_config.refresh_retry_interval);
                 self.metrics
                     .refresh_failures
                     .fetch_add(1, Ordering::Relaxed);
@@ -536,8 +547,9 @@ pub struct BitwardenCacheConfig {
     /// after a transient upstream refresh failure. A zero duration keeps
     /// fail-closed behavior.
     pub stale_if_error: Duration,
-    /// Minimum delay before retrying an upstream refresh after serving stale
-    /// data for a transient failure. A zero duration retries on every resolve.
+    /// Minimum delay before retrying any failed upstream refresh, including
+    /// a cold cache or authentication error. This does not permit stale reads.
+    /// A zero duration retries on every resolve.
     pub refresh_retry_interval: Duration,
 }
 
@@ -559,7 +571,7 @@ impl BitwardenCacheConfig {
         self
     }
 
-    /// Override the delay between refresh attempts while stale data is served.
+    /// Override the cooldown following a failed upstream refresh.
     #[must_use]
     pub const fn with_refresh_retry_interval(mut self, refresh_retry_interval: Duration) -> Self {
         self.refresh_retry_interval = refresh_retry_interval;
@@ -994,6 +1006,9 @@ pub enum BitwardenApiError {
     /// The operator configured an invalid Argon2 allocation budget.
     #[error("Argon2 memory limit must be between 16 and 1024 MiB")]
     InvalidKdfMemoryLimit,
+    /// A recent refresh failed and the retry cooldown has not elapsed.
+    #[error("upstream refresh retry is temporarily deferred")]
+    RefreshThrottled,
     /// A bounded blocking unlock task could not complete.
     #[error("vault unlock worker could not complete")]
     UnlockTaskFailed,
@@ -2194,6 +2209,63 @@ frW69DSxg6/fcNRyvdTH+twvVnzH
                 }
             ))
         ));
+        Ok(())
+    }
+    #[tokio::test]
+    async fn failed_refresh_bursts_share_cooldown_without_serving_stale() -> TestResult {
+        for status in [StatusCode::UNAUTHORIZED, StatusCode::SERVICE_UNAVAILABLE] {
+            let config = BitwardenCacheConfig::default()
+                .with_refresh_retry_interval(Duration::from_secs(60));
+            let (client, counters) = fake_client_with_cache(config).await?;
+            counters.set_token_status(status);
+            let selector = BitwardenSelector::try_from(RemoteRef {
+                key: "id:cipher-login".to_string(),
+                property: Some("username".to_string()),
+                version: None,
+            })?;
+            let mut tasks = tokio::task::JoinSet::new();
+            for _ in 0..16 {
+                let client = client.clone();
+                let selector = selector.clone();
+                tasks.spawn(async move { client.resolve(selector).await });
+            }
+            while let Some(result) = tasks.join_next().await {
+                assert!(result?.is_err());
+            }
+            assert_eq!(counters.token_requests(), 1);
+            assert_eq!(counters.sync_requests(), 0);
+            assert_eq!(client.metrics.snapshot().stale_serves, 0);
+            counters.set_token_status(StatusCode::OK);
+            assert!(matches!(
+                client.resolve(selector.clone()).await,
+                Err(BitwardenClientError::Api(
+                    BitwardenApiError::RefreshThrottled
+                ))
+            ));
+            // Expire the internal deadline deterministically, without a long
+            // sleep or a scheduler-sensitive sub-millisecond time window.
+            *client.refresh_lock.lock().await = Some(Instant::now());
+            assert!(client.resolve(selector).await.is_ok());
+            assert_eq!(counters.token_requests(), 2);
+            assert_eq!(counters.sync_requests(), 1);
+        }
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn zero_retry_cooldown_preserves_per_request_retry() -> TestResult {
+        let config = BitwardenCacheConfig::default().with_refresh_retry_interval(Duration::ZERO);
+        let (client, counters) = fake_client_with_cache(config).await?;
+        counters.set_token_status(StatusCode::SERVICE_UNAVAILABLE);
+        let selector = BitwardenSelector::try_from(RemoteRef {
+            key: "id:cipher-login".to_string(),
+            property: None,
+            version: None,
+        })?;
+        assert!(client.resolve(selector.clone()).await.is_err());
+        assert!(client.resolve(selector).await.is_err());
+        assert_eq!(counters.token_requests(), 2);
+        assert_eq!(client.metrics.snapshot().stale_serves, 0);
         Ok(())
     }
 }
