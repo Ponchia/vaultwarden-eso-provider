@@ -140,5 +140,12 @@ For contribution and security handling, read [CONTRIBUTING.md](CONTRIBUTING.md)
 and [SECURITY.md](SECURITY.md). Report suspected vulnerabilities privately rather
 than including credentials or decrypted values in public issues.
 
+## Support
+
+Vaultwarden ESO Provider is free and open source. If it is useful to you, you
+can [support its maintenance on Ko-fi](https://ko-fi.com/ponchia). Support is
+optional; releases and security fixes are not gated by payment. Contributions
+and issue reports are also welcome; see [CONTRIBUTING.md](CONTRIBUTING.md).
+
 [Documentation index](docs/index.md) · [Roadmap](docs/roadmap.md) ·
 [Apache-2.0 license](LICENSE)
