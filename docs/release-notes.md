@@ -8,6 +8,9 @@ unverified, not passed; split-endpoint implementation is not certification.
 The exact-head Vaultwarden, security, native-package and signed-artifact gates
 still apply; see [stable readiness](stable-readiness.md).
 
+The locked TLS dependency is patched to rustls 0.23.46 for four published
+advisories; dependency notices and exact-head qualification follow the patch.
+
 The 0.5.0 distribution adds native AMD64/ARM64 archives, exact executable and
 Cargo dependency SPDX inventories, dependency notices and a signed complete
 release checksum inventory. Native archives contain the same executable as the

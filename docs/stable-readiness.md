@@ -22,8 +22,9 @@ A passing backend-scope gate is not a completed release. The existing exact-head
 Rust, security, interoperability and **both native Vaultwarden/ESO packaged
 checks** remain mandatory through `release_gates.py`. Public artifact signatures,
 checksums, provenance and post-publication verification remain unchanged.
-No runtime behavior, endpoints, credentials or deployment is changed by the
-scope decision, and publication still needs explicit maintainer authorization.
+The scope decision itself changes no endpoints, credentials or deployment.
+A separately discovered rustls patch is included below and requires fresh
+exact-head qualification. Publication still needs maintainer authorization.
 
 ## What the distribution includes
 
@@ -61,6 +62,18 @@ distributed inventory against the
 checksum-pinned upstream SPDX 2.3 schema.
 
 ## Locked dependencies and static analysis
+
+The CI run for this scope change also found four newly published rustls
+advisories. `Cargo.lock` now selects **rustls 0.23.46** for
+[RUSTSEC-2026-0346](https://rustsec.org/advisories/RUSTSEC-2026-0346),
+[RUSTSEC-2026-0347](https://rustsec.org/advisories/RUSTSEC-2026-0347.html),
+[RUSTSEC-2026-0348](https://rustsec.org/advisories/RUSTSEC-2026-0348.html) and
+[RUSTSEC-2026-0349](https://rustsec.org/advisories/RUSTSEC-2026-0349.html).
+Dependency notices are regenerated. This patch changes the runtime-input
+fingerprint, so source/native qualification must run again on its exact commit;
+old binary evidence is not reused as proof for the patched artifact.
+Advisory checks remain enabled; this is not a claim that every advisory was
+reachable in the provider's configured feature set.
 
 CI audits the complete lockfile as well as the configured dependency graph.
 This catches vulnerable optional dependencies even when they are disabled in

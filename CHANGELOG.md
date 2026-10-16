@@ -10,6 +10,10 @@ before release so generated notes land in the right category.
 
 ## v0.5.0 — Unreleased
 
+- Patch the locked TLS dependency to rustls 0.23.46 for RUSTSEC-2026-0346
+  through RUSTSEC-2026-0349; regenerate dependency notices and repeat the
+  exact-head native qualification. Keep advisory auditing enforced.
+
 - Update the optional locked QUIC dependency past five published advisories;
   keep disabled dependencies out of the actual distribution inventory.
 - Keep redaction-test failures value-free without weakening assertions.
