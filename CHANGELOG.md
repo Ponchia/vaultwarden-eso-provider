@@ -10,6 +10,10 @@ before release so generated notes land in the right category.
 
 ## v0.5.0 — Unreleased
 
+- Patch the locked TLS dependency to rustls 0.23.46 for RUSTSEC-2026-0346
+  through RUSTSEC-2026-0349; regenerate dependency notices and repeat the
+  exact-head native qualification. Keep advisory auditing enforced.
+
 - Update the optional locked QUIC dependency past five published advisories;
   keep disabled dependencies out of the actual distribution inventory.
 - Keep redaction-test failures value-free without weakening assertions.
@@ -19,8 +23,10 @@ before release so generated notes land in the right category.
   release manifest, signed checksums and public-download verification.
 - Include dependency notices in the container and reject stale attribution.
 - Verify OCI chart manifest identity as well as signed chart archive bytes.
-- Refuse stable publication without fresh, source-bound Cloud acceptance.
-  Dedicated-account verification remains pending; `0.5.0` is not published.
+- Scope 0.5.0 release qualification to Vaultwarden only. Defer Bitwarden Cloud
+  acceptance (#75) without fabricating a pass or blocking that release; retain
+  exact-head source, security, interoperability and both native artifact gates.
+  Ship the explicit deferral in the signed readiness record. `0.5.0` is not published.
 - Add the project funding link and clarify supported-version expectations.
 
 ## v0.5.0-rc.1 - 2026-10-13

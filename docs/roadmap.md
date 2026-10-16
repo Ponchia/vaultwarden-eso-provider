@@ -10,14 +10,21 @@ requirements belong in the [release checklist](public-release-checklist.md).
 The `0.5.0-rc.1` prerelease contains the Argon2 fix, safer deletion signals,
 bounded KDF work, scoped authentication and optional stale cache. Native
 AMD64/ARM64 packages have disposable Vaultwarden/ESO qualification. Published
-bytes also need the signature-checked release-artifact run; Cloud acceptance
-under #75 is still open, so this is not a generally qualified stable release.
+bytes also need the signature-checked release-artifact run. The prepared
+0.5.0 stable release is scoped to Vaultwarden; Cloud acceptance under #75 is
+deferred and no longer blocks that release.
 
-Acceptance requires a passing current-head CI and interoperability run, release
-artifact verification, and deliberate upgrade/rollback tests. Repeat the
-Bitwarden Cloud smoke because the unlock path changed; historical PBKDF2 smoke
-evidence must not be presented as current Argon2 or Cloud verification.
-A maintainer must explicitly authorize publication.
+Acceptance requires a passing current-head CI and interoperability run, both
+native packaged checks, release artifact verification and deliberate
+upgrade/rollback tests. A maintainer must explicitly authorize publication.
+
+## Deferred Cloud acceptance
+
+Do not start Cloud account setup or acceptance during the Vaultwarden release.
+Keep #75 open for a later maintainer-approved session. Before claiming Cloud
+compatibility, repeat its smoke against dedicated synthetic accounts with both
+KDFs because the unlock path changed. Historical PBKDF2 smoke and current
+Vaultwarden fixtures are not current Argon2 or Cloud verification.
 
 ## Failure behavior and operating evidence
 

@@ -17,15 +17,18 @@ compatibility/security claim that needs to be tied to an exact artifact.
 For the pre-`v1.0.0` line, use a minor version bump for breaking runtime or
 chart-default changes. Use a patch version only for compatible fixes and
 documentation or packaging corrections. `v0.4.0` is the previous stable release.
-`0.5.0-rc.1` is a deliberately scoped prerelease while fresh Cloud acceptance
-remains open. Never call a tag published until its workflow succeeds.
-A prerelease can carry completed Vaultwarden evidence without claiming Cloud
-or general availability. Do not mark it latest or replace stable image aliases.
+`0.5.0-rc.1` remains the published prerelease. The prepared `0.5.0` stable release
+is now scoped to **Vaultwarden only**; Cloud acceptance is deferred in #75 and
+is not a blocker. Never call a tag published until its workflow succeeds.
+A Vaultwarden-scoped stable release does not qualify Bitwarden Cloud.
+Prereleases must still not replace stable/latest image aliases.
 
-Required before calling a release generally usable:
+Required before calling a release usable within its declared Vaultwarden scope:
 
-- Pass `scripts/stable_readiness.py --tag v<version>` with current, source-bound
-  dedicated-account Cloud evidence; see [stable readiness](stable-readiness.md).
+- Pass `scripts/stable_readiness.py --tag v<version>` with the explicit
+  Vaultwarden-only scope and deferred Cloud record; see
+  [stable readiness](stable-readiness.md). This does not skip the source,
+  interoperability, native-package or published-artifact gates below.
 - Verify the complete distribution manifest, signed checksums, both native
   archives, SPDX inventories and dependency notices from public downloads.
 
@@ -43,11 +46,12 @@ Required before calling a release generally usable:
   [`.github/release.yml`](../.github/release.yml), and update
   [`../CHANGELOG.md`](../CHANGELOG.md) for notable user-facing changes.
 - Tag and publish a multi-arch image from GitHub Actions.
-- Run `scripts/live-eso-smoke.sh` against real Vaultwarden and Bitwarden Cloud
-  accounts with k3s or a kind cluster with ESO installed, with selector policy
-  enabled. For packaging-only releases, verify the changed packaging path and
-  record whether prior backend live evidence is being reused because provider
-  runtime behavior did not change.
+- Run `scripts/live-eso-smoke.sh` against the intended Vaultwarden installation
+  with k3s or a kind cluster with ESO installed and selector policy enabled.
+  Cloud account setup and acceptance are deferred follow-up, not prerequisites
+  for this Vaultwarden-scoped release. For packaging-only releases, verify
+  the changed packaging path and record whether prior Vaultwarden live evidence
+  is being reused because provider runtime behavior did not change.
 - Verify migration examples use `creationPolicy: Orphan`,
   `deletionPolicy: Retain`, and template `mergePolicy: Merge`, and that a
   deleted target Secret is recreated with identical data.

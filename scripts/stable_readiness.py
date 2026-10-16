@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Keep stable publication tied to fresh, source-bound backend evidence."""
+"""Enforce the declared release scope; require fresh Cloud evidence only when claimed."""
 from __future__ import annotations
 
 import argparse
@@ -9,7 +9,7 @@ import json
 from pathlib import Path
 import re
 
-from release_bundle import VERSION, REVISION, require
+from release_bundle import VERSION, REVISION, readiness_scope, require
 
 ROOT = Path(__file__).resolve().parents[1]
 CHECKS = {"api-key-unlock", "field-and-map-reads", "missing-property", "selector-denial", "rotation", "restart", "item-deletion"}
@@ -31,10 +31,12 @@ def runtime_fingerprint(root: Path) -> str:
     return digest.hexdigest()
 
 
-def validate(report: dict, version: str, fingerprint: str, now: datetime | None = None) -> None:
-    require(set(report) == {"schemaVersion", "targetVersion", "cloud"} and report["schemaVersion"] == 1,
-            "unknown readiness record shape")
-    require(report["targetVersion"] == version, "qualification is for a different version")
+def validate(report: dict, version: str, fingerprint: str, now: datetime | None = None) -> str:
+    scope = readiness_scope(report, version)
+    if scope == "vaultwarden-only":
+        # This is a maintainer-selected support boundary, not backend evidence.
+        # release_gates.py still requires all exact-head Vaultwarden/native jobs.
+        return scope
     cloud = report["cloud"]
     require(isinstance(cloud, dict) and cloud.get("status") == "passed", "fresh dedicated-account Bitwarden Cloud verification is still pending (#75)")
     require(set(cloud) == {"status", "checkedAt", "backend", "sourceRevision", "runtimeInputsSha256", "artifactSha256", "architecture", "checks"},
@@ -52,27 +54,31 @@ def validate(report: dict, version: str, fingerprint: str, now: datetime | None 
     for checks in cloud["checks"].values():
         require(isinstance(checks, list) and len(checks) == len(CHECKS) and set(checks) == CHECKS,
                 "Cloud qualification is missing a required behavior")
+    return scope
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--tag", required=True)
-    parser.add_argument("--status", action="store_true", help="Report readiness without treating a pending record as a process failure")
+    parser.add_argument("--status", action="store_true", help="Report backend-scope admission only; other release gates and publication approval remain separate")
     args = parser.parse_args()
     require(args.tag.startswith("v") and VERSION.fullmatch(args.tag[1:]) is not None, "invalid release tag")
     if "-" in args.tag:
-        print("Prerelease: no claim of completed stable Cloud qualification.")
+        print("Prerelease: no claim of completed stable backend qualification.")
         return
     fingerprint = runtime_fingerprint(ROOT)
     report = json.loads((ROOT / "docs/release-readiness.json").read_text())
     try:
-        validate(report, args.tag[1:], fingerprint)
+        scope = validate(report, args.tag[1:], fingerprint)
     except (ValueError, TypeError, KeyError):
         if not args.status:
             raise
-        print(json.dumps({"ready": False, "tag": args.tag, "cloud": "pending", "runtimeInputsSha256": fingerprint}))
+        print(json.dumps({"ready": False, "gate": "backend-release-scope", "tag": args.tag,
+                          "cloud": "unverified", "runtimeInputsSha256": fingerprint}))
         return
-    print(json.dumps({"ready": True, "tag": args.tag, "runtimeInputsSha256": fingerprint}))
+    print(json.dumps({"ready": True, "gate": "backend-release-scope", "tag": args.tag,
+                      "releaseScope": scope, "cloud": report["cloud"]["status"],
+                      "runtimeInputsSha256": fingerprint, "otherReleaseGatesRequired": True}))
 
 
 if __name__ == "__main__":
