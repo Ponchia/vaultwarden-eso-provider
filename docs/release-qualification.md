@@ -3,7 +3,8 @@
 `0.5.0-rc.1` is a **prerelease**, not a generally qualified stable release.
 GitHub Releases records publication and exact artifact evidence. Candidate
 checks alone neither publish artifacts nor establish that released bytes passed.
-Bitwarden Cloud remains a separate, incomplete acceptance item (#75).
+The prepared 0.5.0 stable release is scoped to Vaultwarden only. Bitwarden Cloud
+acceptance is deferred in #75, remains unverified, and does not block that release.
 
 ## Public, disposable checks
 
@@ -52,10 +53,11 @@ tests. It does not rebuild the image or chart. The qualification record names
 the release tag and image digest and records `published: true`; `cloudTested`
 remains false. Use this run before promoting the package into a live deployment.
 
-## Private Cloud checks
+## Deferred private Cloud checks
 
-Use a separate Bitwarden Cloud test account with synthetic secrets, never the
-operator's personal password vault. The user's Gmail may receive verification
+Do not run this work as part of the Vaultwarden release. When the maintainer
+resumes #75, use a separate Bitwarden Cloud test account with synthetic secrets,
+never the operator's personal password vault. The user's Gmail may receive verification
 mail, but Gmail/Google credentials and cookies are not provider inputs. Do not
 store the account email, master password, personal API key or session in GitHub
 variables, secrets, Actions inputs, logs or build contexts for this qualification.
@@ -66,6 +68,6 @@ credentials outside every repository with restrictive permissions; revoke test
 access and remove temporary state when the qualification is complete. A browser
 may retain its normal private session; closing a tab is not credential erasure.
 
-Issue #75 remains open until current artifact qualification and a separate
-live Bitwarden Cloud pass have actual evidence. Independent external review
-is separate (#76).
+Issue #75 remains open as non-blocking follow-up until a separate live Bitwarden
+Cloud pass has actual evidence. Its deferral does not remove any Vaultwarden
+artifact gate. Independent external review is separate (#76).

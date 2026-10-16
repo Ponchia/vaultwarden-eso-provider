@@ -2405,7 +2405,7 @@ Used by:
 - regex-automata 0.4.14
 - regex-syntax 0.8.11
 - ring 0.17.14
-- rustls 0.23.45
+- rustls 0.23.46
 - signal-hook-registry 1.4.8
 - smallvec 1.15.2
 - socket2 0.6.4

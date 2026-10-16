@@ -8,7 +8,7 @@ import tarfile
 import tempfile
 import unittest
 
-from release_bundle import asset_names, binary_name, check_archive, check_elf, package, verify, write_bundle
+from release_bundle import asset_names, binary_name, check_archive, check_elf, inventory, package, verify, write_bundle
 
 
 class ReleaseBundleTests(unittest.TestCase):
@@ -40,7 +40,8 @@ class ReleaseBundleTests(unittest.TestCase):
                 "packages":[{"SPDXID":"SPDXRef-ProviderBinary", "versionInfo":self.version,
                              "checksums":[{"algorithm":"SHA256", "checksumValue":hashlib.sha256(binary.read_bytes()).hexdigest()}]},
                             {"SPDXID":"SPDXRef-Source"}]}))
-        (self.root / "release-readiness.json").write_text(json.dumps({"schemaVersion":1, "targetVersion":self.version, "cloud":{"status":"passed"}}))
+        (self.root / "release-readiness.json").write_text(json.dumps({"schemaVersion":2, "targetVersion":self.version,
+            "releaseScope":"vaultwarden-only", "cloud":{"status":"deferred", "issue":75}}))
         write_bundle(self.root, self.version, "a" * 40, "sha256:" + "b" * 64, "sha256:" + "c" * 64)
 
     def test_roundtrip_and_explicit_allowlist(self):
@@ -134,6 +135,31 @@ class ReleaseBundleTests(unittest.TestCase):
     def test_invalid_manifest_digest(self):
         with self.assertRaises(ValueError):
             write_bundle(self.root, "0.5.0", "a" * 40, "latest", "sha256:" + "c" * 64)
+
+
+    def test_scoped_distribution_publishes_deferral_not_a_fake_cloud_pass(self):
+        self.populate()
+        verify(self.root)
+        record = json.loads((self.root / "release-readiness.json").read_text())
+        self.assertEqual(record["releaseScope"], "vaultwarden-only")
+        self.assertEqual(record["cloud"], {"status":"deferred", "issue":75})
+
+    def test_bundle_builder_rejects_broadened_or_malformed_support_claims(self):
+        self.populate()
+        path = self.root / "release-readiness.json"
+        baseline = json.loads(path.read_text())
+        for change in ({"releaseScope":"all"}, {"cloud":{"status":"passed"}},
+                       {"targetVersion":"0.5.1"}, {"privateAccount":"fixture@example.invalid"}):
+            with self.subTest(change=change):
+                path.write_text(json.dumps(baseline | change))
+                with self.assertRaises(ValueError): inventory(self.root, self.version)
+
+    def test_changed_valid_readiness_record_is_still_covered_by_signed_checksums(self):
+        self.populate()
+        path = self.root / "release-readiness.json"
+        # Even a semantically identical policy cannot change the recorded bytes.
+        path.write_text(path.read_text() + "\n")
+        with self.assertRaises(ValueError): verify(self.root)
 
 
 if __name__ == "__main__":

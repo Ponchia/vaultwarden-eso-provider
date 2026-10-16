@@ -3,7 +3,9 @@
 This project targets the Bitwarden Password Manager vault protocol. The
 primary target is **Vaultwarden** (and self-hosted Bitwarden Password Manager
 exposed through a single origin); **Bitwarden Cloud Password Manager** has an
-implemented split-endpoint mode, but current live Cloud qualification is pending.
+implemented split-endpoint mode, but live Cloud acceptance is deferred and
+unverified. The prepared 0.5.0 release is qualified for **Vaultwarden only**;
+neither a stable version label nor shared protocol code certifies other backends.
 Bitwarden Secrets
 Manager (`bws`) is not in scope and is not available in Vaultwarden in any case.
 
@@ -21,9 +23,10 @@ its artifact record, rather than a source-tree pass, establish that evidence.
 
 **Bitwarden Cloud US/EU is not currently requalified.** The older Cloud smoke
 below is historical and is not proof of current unlock compatibility. #75 stays
-open until a dedicated private-account check succeeds. The prerelease must not
-be represented as generally qualified across every backend. Independent review
-and defined soak testing remain separate work (#76).
+open as deferred follow-up until a dedicated private-account check succeeds;
+it does not block a Vaultwarden-only release. Neither the prerelease nor a
+Vaultwarden-scoped stable release may be represented as Cloud-qualified.
+Independent review and defined soak testing remain separate work (#76).
 
 The previous stable `v0.4.0` has a known Argon2 salt-preprocessing defect and
 returns 404 for missing fields. Prefer a deliberately qualified fixed build;
