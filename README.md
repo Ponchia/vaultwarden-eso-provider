@@ -22,8 +22,9 @@ with Bitwarden, Vaultwarden, or External Secrets Operator.
 
 ## Release status
 
-The source tree prepares `0.5.0`; its remaining acceptance gate is tracked in
-[stable readiness](docs/stable-readiness.md). It is not published yet.
+The source tree prepares `0.5.0` with **Vaultwarden-only release qualification**.
+Bitwarden Cloud acceptance is deferred and does not block that release; see
+[stable readiness](docs/stable-readiness.md). `0.5.0` is not published yet.
 
 **The `v0.5.0-rc.1` prerelease line contains the Argon2 and deletion-safety fixes.**
 Check [GitHub Releases](https://github.com/Ponchia/vaultwarden-eso-provider/releases)
@@ -32,8 +33,9 @@ stable release and has a known Argon2 salt-preprocessing defect; do not weaken
 an account's KDF to work around it.
 
 The prerelease is qualified against disposable Vaultwarden on native AMD64 and
-ARM64. **Fresh Bitwarden Cloud qualification is still incomplete** (#75).
-Split-endpoint support is implemented, but is not a current Cloud certification.
+ARM64. **Bitwarden Cloud is unverified and outside the current release's
+qualified scope**; acceptance is deferred in #75, not marked passed.
+Split-endpoint support remains implemented, but is not a current Cloud certification.
 Shared organization items and attachments remain unsupported.
 
 `0.5.0-rc.1` adds capability-scoped bearer tokens, opt-in bounded stale-cache

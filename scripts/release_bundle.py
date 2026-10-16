@@ -88,13 +88,38 @@ def asset_names(version: str) -> list[str]:
         name for arch in ARCHES for name in (binary_name(version, arch), f"sbom-linux-{arch}.spdx.json")]]
 
 
+def readiness_scope(report: dict, version: str) -> str:
+    """Read an explicit support boundary, never turn deferred Cloud work into a pass.
+
+    Version 1 retains the original Cloud-qualified contract for historical
+    records. Version 2 deliberately scopes this release to Vaultwarden only.
+    Actual Vaultwarden qualification remains in the exact-commit release gates.
+    """
+    require(isinstance(report, dict) and type(report.get("schemaVersion")) is int,
+            "unknown readiness record shape")
+    require(report.get("targetVersion") == version, "qualification is for a different version")
+    if report["schemaVersion"] == 2:
+        require(set(report) == {"schemaVersion", "targetVersion", "releaseScope", "cloud"},
+                "unknown readiness record shape")
+        require(report["releaseScope"] == "vaultwarden-only", "unsupported release qualification scope")
+        require(isinstance(report["cloud"], dict)
+                and set(report["cloud"]) == {"status", "issue"}
+                and report["cloud"]["status"] == "deferred"
+                and type(report["cloud"]["issue"]) is int and report["cloud"]["issue"] == 75,
+                "Vaultwarden-only scope must explicitly defer unverified Cloud acceptance to #75")
+        return "vaultwarden-only"
+    require(report["schemaVersion"] == 1
+            and set(report) == {"schemaVersion", "targetVersion", "cloud"}
+            and isinstance(report["cloud"], dict), "unknown readiness record shape")
+    return "vaultwarden-and-bitwarden-cloud"
+
+
 def inventory(directory: Path, version: str) -> list[dict[str, Any]]:
     result = []
     readiness = json.loads(read_regular(directory / "release-readiness.json"))
-    require(readiness.get("schemaVersion") == 1 and readiness.get("targetVersion") == version.split("-", 1)[0],
-            "release readiness targets a different version")
-    require("-" in version or readiness.get("cloud", {}).get("status") == "passed",
-            "stable distribution has no passed Cloud acceptance record")
+    scope = readiness_scope(readiness, version.split("-", 1)[0])
+    require("-" in version or scope == "vaultwarden-only" or readiness["cloud"].get("status") == "passed",
+            "Cloud-qualified stable distribution has no passed Cloud acceptance record")
     member_hashes = {arch: check_archive(directory / binary_name(version, arch), arch) for arch in ARCHES}
     notices_hash = hashlib.sha256(read_regular(directory / "THIRD-PARTY-LICENSES.txt")).hexdigest()
     for members in member_hashes.values():

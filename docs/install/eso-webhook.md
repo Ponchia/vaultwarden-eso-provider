@@ -2,8 +2,9 @@
 
 **Version boundary:** this guide targets the `v0.5.0-rc.1` prerelease, including
 scoped authentication, opt-in bounded stale cache, corrected Argon2, the memory
-budget and HTTP 422 for missing properties. Current Cloud qualification is
-pending; Vaultwarden is the independently exercised backend. Do not combine a
+budget and HTTP 422 for missing properties. Cloud acceptance is deferred and
+non-blocking for Vaultwarden-only release qualification. Cloud remains unverified;
+Vaultwarden is the independently exercised backend. Do not combine a
 checkout chart with an old image and assume new settings are implemented.
 See [compatibility](../compatibility.md) before choosing a release.
 

@@ -156,6 +156,11 @@ jobs:
       - name: Test artifact qualification identity guards
         run: python3 -m unittest discover -s scripts -p 'test_*.py'
 
+      - name: Validate declared backend release scope
+        run: |
+          version="$(python3 -c 'import json; print(json.load(open("docs/release-readiness.json"))["targetVersion"])')"
+          python3 scripts/stable_readiness.py --tag "v${version}"
+
       - name: Validate local documentation links
         run: python3 scripts/check-doc-links.py
 

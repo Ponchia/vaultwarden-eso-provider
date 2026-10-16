@@ -2,9 +2,28 @@
 
 `v0.5.0` is **not published**. `v0.5.0-rc.1` remains the available prerelease;
 its exact published packages and the maintainer's Vaultwarden installation
-have passed the recorded acceptance tests. Fresh dedicated-account Bitwarden
-Cloud verification is still pending in issue #75. External review and measured
-load/soak work remain separate in #76; no independent audit is claimed.
+have passed the recorded acceptance tests.
+
+On 16 October 2026 the maintainer deferred Bitwarden Cloud acceptance. The
+prepared `0.5.0` release now has **Vaultwarden-only qualification**: issue #75
+is follow-up work, not a release blocker. Cloud support remains unverified;
+no Cloud test was run or recorded as passed by changing this policy. External
+review and measured load/soak work remain separate in #76; no audit is claimed.
+
+## Backend release scope
+
+`release-readiness.json` schema 2 declares `releaseScope: vaultwarden-only`
+and `cloud: {status: deferred, issue: 75}`. Both the admission script and the
+signed distribution validator enforce that exact boundary. Missing/unknown
+scopes, a changed target version, private fields or a fabricated Cloud pass are
+refused. The deferral is shipped in the checksum-covered readiness attachment.
+
+A passing backend-scope gate is not a completed release. The existing exact-head
+Rust, security, interoperability and **both native Vaultwarden/ESO packaged
+checks** remain mandatory through `release_gates.py`. Public artifact signatures,
+checksums, provenance and post-publication verification remain unchanged.
+No runtime behavior, endpoints, credentials or deployment is changed by the
+scope decision, and publication still needs explicit maintainer authorization.
 
 ## What the distribution includes
 
@@ -54,46 +73,44 @@ Reviewed static-analysis false positives retain per-alert rationale; no
 cryptography rule is disabled. Redaction tests keep their assertions while
 avoiding value-bearing panic messages, even for synthetic fixtures.
 
-## Remaining backend evidence
+## Deferred Bitwarden Cloud acceptance
 
-Use only a dedicated test account and synthetic items. Authentication setup
-belongs in the operator's private browser and secret manager. Never paste
-account credentials into a public report or GitHub Actions inputs. The existing
-[live test instructions](live-testing.md) explain credential and cluster
-boundaries; [release qualification](release-qualification.md) distinguishes
-source builds, published packages and Cloud evidence.
+Issue #75 retains the dedicated-account work for later. Do not start Cloud
+account setup or run its acceptance as part of the Vaultwarden release. When
+the maintainer resumes it, use only synthetic items and a dedicated test account;
+authentication setup belongs in the private browser and secret manager.
+Never paste credentials into public reports or GitHub Actions inputs.
 
-Before stable publication, record the following in `release-readiness.json`:
+The original Cloud-qualified record validator remains available and tested.
+Before broadening the release's qualified backend scope, supply actual evidence:
+version, Cloud region, time with timezone, architecture, source revision, exact
+binary SHA-256 and runtime-input SHA-256; both PBKDF2 and Argon2 must pass
+API-key unlock, field/map reads, missing property, selector denial, rotation,
+restart and item deletion. A deferred or pending record cannot satisfy the
+Cloud-qualified schema, and a Vaultwarden fixture cannot count as Cloud evidence.
 
-- The `0.5.0` target version, Cloud region, time with timezone, architecture,
-  tested source revision, exact binary SHA256 and runtime-input SHA256.
-- A passed result for both PBKDF2 and Argon2: API-key unlock, field/map reads,
-  missing property, selector denial, rotation, restart and item deletion.
+That evidence's runtime fingerprint covers Cargo manifests/lock, Rust sources,
+Dockerfile/build-context policy and the shipped Helm chart. Runtime changes or
+Cloud evidence older than 30 days require requalification. Recording evidence
+is not a security audit. See [live testing](live-testing.md) and
+[release qualification](release-qualification.md) before resuming the work.
 
-The runtime-input fingerprint covers Cargo manifests/lock, Rust sources,
-Dockerfile/build-context policy and the shipped Helm chart. It excludes the
-report itself, so recording a result does not invalidate that result. A runtime
-change invalidates the evidence; tests more than 30 days old must be repeated.
-The public record intentionally has no fields for account identities, item
-selectors, credentials, returned values or private URLs.
-
-Inspect without publishing:
+Inspect the current backend-scope admission without publishing:
 
 ```bash
 python3 scripts/stable_readiness.py --tag v0.5.0 --status
 ```
 
-The release workflow invokes the strict form for stable tags and refuses
-pending, stale, incomplete or unrelated Cloud evidence. This is a maintainer's
-source-bound test record, not an independent verifier of the person who ran it.
-A green CI build cannot turn a pending backend result into a pass.
+The expected result is `ready: true`, `releaseScope: vaultwarden-only`,
+`cloud: deferred` and `otherReleaseGatesRequired: true`. It is specifically the
+backend-scope decision, not proof that all release checks passed or a tag exists.
 
-## Complete the release
+## Complete the Vaultwarden-scoped release
 
-Finish the dedicated account, run the Cloud acceptance against the prepared
-0.5.0 candidate and add its redacted result. The Cargo packages and Helm chart
-already agree on 0.5.0; pass the exact-head source and both native packaged checks.
-Create the authorized `v0.5.0` tag only after the strict readiness check passes.
-Verify every published download and run `qualification.yml` with that tag as
+Pass the exact-head source, interoperability and both native packaged checks
+for the prepared 0.5.0 candidate. Create `v0.5.0` only when the maintainer explicitly
+authorizes publication; the Cloud deferral no longer blocks that path.
+Verify every published download and run `qualification.yml` with the tag as
 both `ref` and `release_tag`. The same signed digests then go through the
 existing canary and GitOps upgrade, preserving credentials and selectors.
+Do not describe that Vaultwarden qualification as Bitwarden Cloud acceptance.

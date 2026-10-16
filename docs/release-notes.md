@@ -1,9 +1,12 @@
 # 0.5.0 upgrade notes
 
 These notes describe the prepared 0.5.0 source, not a publication announcement.
-The GitHub Releases page is the source of truth for available versions. Stable
-publication requires the source-bound Cloud acceptance record to pass; the
-current state is documented in [stable readiness](stable-readiness.md).
+The GitHub Releases page is the source of truth for available versions.
+**Release qualification scope: Vaultwarden only.** Bitwarden Cloud acceptance
+is deferred in #75 and is not a blocker for this release. Cloud support remains
+unverified, not passed; split-endpoint implementation is not certification.
+The exact-head Vaultwarden, security, native-package and signed-artifact gates
+still apply; see [stable readiness](stable-readiness.md).
 
 The 0.5.0 distribution adds native AMD64/ARM64 archives, exact executable and
 Cargo dependency SPDX inventories, dependency notices and a signed complete
