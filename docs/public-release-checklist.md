@@ -17,8 +17,8 @@ compatibility/security claim that needs to be tied to an exact artifact.
 For the pre-`v1.0.0` line, use a minor version bump for breaking runtime or
 chart-default changes. Use a patch version only for compatible fixes and
 documentation or packaging corrections. `v0.4.0` is the previous stable release.
-`0.5.0-rc.1` remains the published prerelease. The prepared `0.5.0` stable release
-is now scoped to **Vaultwarden only**; Cloud acceptance is deferred in #75 and
+`0.5.0-rc.2` is the prepared security maintenance prerelease. The `0.5.0`
+release line is scoped to **Vaultwarden only**; Cloud acceptance is deferred in #75 and
 is not a blocker. Never call a tag published until its workflow succeeds.
 A Vaultwarden-scoped stable release does not qualify Bitwarden Cloud.
 Prereleases must still not replace stable/latest image aliases.

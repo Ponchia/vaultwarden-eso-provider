@@ -4,7 +4,7 @@ This project targets the Bitwarden Password Manager vault protocol. The
 primary target is **Vaultwarden** (and self-hosted Bitwarden Password Manager
 exposed through a single origin); **Bitwarden Cloud Password Manager** has an
 implemented split-endpoint mode, but live Cloud acceptance is deferred and
-unverified. The prepared 0.5.0 release is qualified for **Vaultwarden only**;
+unverified. The `0.5.0-rc.2` release qualification scope is **Vaultwarden only**;
 neither a stable version label nor shared protocol code certifies other backends.
 Bitwarden Secrets
 Manager (`bws`) is not in scope and is not available in Vaultwarden in any case.

@@ -1,8 +1,10 @@
 # Stable 0.5.0 readiness
 
-`v0.5.0` is **not published**. `v0.5.0-rc.1` remains the available prerelease;
-its exact published packages and the maintainer's Vaultwarden installation
-have passed the recorded acceptance tests.
+`v0.5.0` is **not published**. The source prepares `v0.5.0-rc.2`, a security
+maintenance prerelease with refreshed TLS and constant-time dependencies.
+GitHub Releases records publication and exact artifact evidence. The recorded
+`v0.5.0-rc.1` acceptance remains historical evidence and does not qualify the
+new dependency graph.
 
 On 16 October 2026 the maintainer deferred Bitwarden Cloud acceptance. The
 prepared `0.5.0` release now has **Vaultwarden-only qualification**: issue #75
@@ -13,7 +15,8 @@ review and measured load/soak work remain separate in #76; no audit is claimed.
 ## Backend release scope
 
 `release-readiness.json` schema 2 declares `releaseScope: vaultwarden-only`
-and `cloud: {status: deferred, issue: 75}`. Both the admission script and the
+and `cloud: {status: deferred, issue: 75}`. Its `targetVersion` follows the exact
+distribution version, currently `0.5.0-rc.2`. Both the admission script and the
 signed distribution validator enforce that exact boundary. Missing/unknown
 scopes, a changed target version, private fields or a fabricated Cloud pass are
 refused. The deferral is shipped in the checksum-covered readiness attachment.
@@ -108,21 +111,25 @@ Cloud evidence older than 30 days require requalification. Recording evidence
 is not a security audit. See [live testing](live-testing.md) and
 [release qualification](release-qualification.md) before resuming the work.
 
-Inspect the current backend-scope admission without publishing:
+Inspect the prepared prerelease metadata without publishing:
 
 ```bash
-python3 scripts/stable_readiness.py --tag v0.5.0 --status
+bash scripts/verify-release-version.sh v0.5.0-rc.2
+python3 scripts/stable_readiness.py --tag v0.5.0-rc.2
 ```
 
-The expected result is `ready: true`, `releaseScope: vaultwarden-only`,
-`cloud: deferred` and `otherReleaseGatesRequired: true`. It is specifically the
-backend-scope decision, not proof that all release checks passed or a tag exists.
+The prerelease admission does not claim completed stable qualification. The
+signed distribution validator still requires the exact target version and
+Vaultwarden-only scope with Cloud deferred. Promoting to stable requires matching
+stable version metadata and fresh exact-commit evidence; a prerelease record
+does not qualify `v0.5.0`.
 
 ## Complete the Vaultwarden-scoped release
 
 Pass the exact-head source, interoperability and both native packaged checks
-for the prepared 0.5.0 candidate. Create `v0.5.0` only when the maintainer explicitly
-authorizes publication; the Cloud deferral no longer blocks that path.
+for the prepared `0.5.0-rc.2` candidate before creating that tag. Stable
+`v0.5.0` publication remains a separate release decision. Cloud acceptance
+stays deferred for the Vaultwarden-only scope.
 Verify every published download and run `qualification.yml` with the tag as
 both `ref` and `release_tag`. The same signed digests then go through the
 existing canary and GitOps upgrade, preserving credentials and selectors.

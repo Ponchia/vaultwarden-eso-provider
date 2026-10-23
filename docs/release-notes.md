@@ -1,6 +1,6 @@
-# 0.5.0 upgrade notes
+# 0.5.0-rc.2 upgrade notes
 
-These notes describe the prepared 0.5.0 source, not a publication announcement.
+These notes describe the `0.5.0-rc.2` security maintenance prerelease candidate.
 The GitHub Releases page is the source of truth for available versions.
 **Release qualification scope: Vaultwarden only.** Bitwarden Cloud acceptance
 is deferred in #75 and is not a blocker for this release. Cloud support remains
@@ -9,9 +9,12 @@ The exact-head Vaultwarden, security, native-package and signed-artifact gates
 still apply; see [stable readiness](stable-readiness.md).
 
 The locked TLS dependency is patched to rustls 0.23.46 for four published
-advisories; dependency notices and exact-head qualification follow the patch.
+advisories. The October maintenance also updates the certificate verifier,
+trusted roots and constant-time utility dependencies for RUSTSEC-2026-0381,
+RUSTSEC-2026-0382 and RUSTSEC-2026-0385. Dependency notices and exact-head
+qualification follow the patched lockfile.
 
-The 0.5.0 distribution adds native AMD64/ARM64 archives, exact executable and
+The `0.5.0-rc.2` distribution adds native AMD64/ARM64 archives, exact executable and
 Cargo dependency SPDX inventories, dependency notices and a signed complete
 release checksum inventory. Native archives contain the same executable as the
 container image. The lockfile fixes five optional QUIC advisories; the provider

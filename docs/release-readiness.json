@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "targetVersion": "0.5.0",
+  "targetVersion": "0.5.0-rc.2",
   "releaseScope": "vaultwarden-only",
   "cloud": {
     "status": "deferred",

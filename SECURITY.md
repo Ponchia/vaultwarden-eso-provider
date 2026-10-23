@@ -12,7 +12,9 @@ qualification. No independent audit is claimed.
 
 The 0.4.0 Argon2 interoperability defect and unsafe missing-property deletion
 signal are corrected in 0.5.0-rc.1. Do not lower an account KDF as a workaround.
-Use the fixed prerelease deliberately or await qualified stable 0.5.0.
+The `0.5.0-rc.2` candidate additionally updates TLS verification, certificate
+roots and constant-time utilities for the October advisories. Check GitHub
+Releases for the published artifact and qualification evidence before upgrading.
 
 ## Reporting Vulnerabilities
 

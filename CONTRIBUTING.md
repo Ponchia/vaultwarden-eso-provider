@@ -58,6 +58,11 @@ mise run ci
 conservative; review should focus on meaningful tests for auth, selector policy,
 decryption, redaction, cache behavior, and Kubernetes-facing contracts.
 
+The dedicated Dependency audit workflow checks every entry in `Cargo.lock`
+against current RustSec advisories each day and on lockfile pull requests.
+It includes inactive optional dependencies. The normal CI security and release
+gates still run the same whole-lock audit alongside their other checks.
+
 If dependencies change, also run:
 
 ```bash
