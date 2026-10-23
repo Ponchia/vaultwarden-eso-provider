@@ -14,8 +14,8 @@ trusted roots and constant-time utility dependencies for RUSTSEC-2026-0381,
 RUSTSEC-2026-0382 and RUSTSEC-2026-0385. Dependency notices and exact-head
 qualification follow the patched lockfile.
 
-The `0.5.0-rc.2` distribution adds native AMD64/ARM64 archives, exact executable and
-Cargo dependency SPDX inventories, dependency notices and a signed complete
+The `0.5.0-rc.2` distribution adds native AMD64/ARM64 archives, exact executable
+and Cargo dependency SPDX inventories, dependency notices and a signed complete
 release checksum inventory. Native archives contain the same executable as the
 container image. The lockfile fixes five optional QUIC advisories; the provider
 does not enable HTTP/3. Whole-lock auditing prevents inactive dependencies from

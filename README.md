@@ -41,8 +41,9 @@ qualified scope**; acceptance is deferred in #75, not marked passed.
 Split-endpoint support remains implemented, but is not a current Cloud certification.
 Shared organization items and attachments remain unsupported.
 
-The `0.5.0` prerelease line adds capability-scoped bearer tokens, opt-in bounded stale-cache
-fallback, safer deletion/error semantics and an operator KDF memory budget.
+The `0.5.0` prerelease line adds capability-scoped bearer tokens, opt-in bounded
+stale-cache fallback, safer deletion/error semantics and an operator KDF memory
+budget.
 Read the [changelog](CHANGELOG.md) and [upgrade notes](docs/release-notes.md).
 A source update does not update an installed image automatically.
 
@@ -110,8 +111,9 @@ Use separate accounts and deployments where that distinction matters.
 
 Allow only reviewed `id:` selectors. Policy is **item-level**, not field-level:
 access to an item allows any supported property on that item. Scoped tokens in
-the `0.5.0` prerelease line add caller-specific limits, but do not change the upstream account's
-privileges. Restrict access to the provider namespace and workload token Secrets.
+the `0.5.0` prerelease line add caller-specific limits, but do not change the
+upstream account's privileges. Restrict access to the provider namespace and
+workload token Secrets.
 
 The default Service is cluster-internal **HTTP**. It carries bearer tokens and
 plaintext resolved values. Use a trusted pod network with reviewed NetworkPolicy
