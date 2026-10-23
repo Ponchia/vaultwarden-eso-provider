@@ -10,6 +10,20 @@ before release so generated notes land in the right category.
 
 ## v0.5.0 — Unreleased
 
+Stable publication remains a separate release decision.
+
+## v0.5.0-rc.2 — Candidate
+
+Security maintenance prerelease for the Vaultwarden-qualified release line.
+The GitHub Release records publication and the exact artifact evidence.
+
+- Update the TLS certificate verifier, trusted roots and constant-time utility
+  dependencies for RUSTSEC-2026-0381, RUSTSEC-2026-0382 and RUSTSEC-2026-0385.
+  Refresh compatible runtime/hash dependencies and their generated notices.
+- Check the complete lockfile against current advisories daily, including
+  inactive optional dependencies, without rebuilding the whole project.
+- Update reviewed workflow actions and pin local Node.js to 22.23.4.
+
 - Patch the locked TLS dependency to rustls 0.23.46 for RUSTSEC-2026-0346
   through RUSTSEC-2026-0349; regenerate dependency notices and repeat the
   exact-head native qualification. Keep advisory auditing enforced.

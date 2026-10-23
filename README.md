@@ -22,24 +22,28 @@ with Bitwarden, Vaultwarden, or External Secrets Operator.
 
 ## Release status
 
-The source tree prepares `0.5.0` with **Vaultwarden-only release qualification**.
-Bitwarden Cloud acceptance is deferred and does not block that release; see
-[stable readiness](docs/stable-readiness.md). `0.5.0` is not published yet.
+The source tree prepares `0.5.0-rc.2`, a security maintenance prerelease with
+**Vaultwarden-only release qualification**. Bitwarden Cloud acceptance remains
+deferred in #75; see [release readiness](docs/stable-readiness.md).
+The stable `0.5.0` version is not published.
 
-**The `v0.5.0-rc.1` prerelease line contains the Argon2 and deletion-safety fixes.**
+**The `v0.5.0-rc.2` candidate includes the October TLS and constant-time
+dependency fixes, alongside the earlier Argon2 and deletion-safety fixes.**
 Check [GitHub Releases](https://github.com/Ponchia/vaultwarden-eso-provider/releases)
 for published artifacts and verification evidence. `v0.4.0` is the previous
 stable release and has a known Argon2 salt-preprocessing defect; do not weaken
 an account's KDF to work around it.
 
-The prerelease is qualified against disposable Vaultwarden on native AMD64 and
-ARM64. **Bitwarden Cloud is unverified and outside the current release's
+Each candidate must pass disposable Vaultwarden checks on native AMD64 and
+ARM64 and verification of its signed published artifacts. **Bitwarden Cloud is
+unverified and outside the current release's
 qualified scope**; acceptance is deferred in #75, not marked passed.
 Split-endpoint support remains implemented, but is not a current Cloud certification.
 Shared organization items and attachments remain unsupported.
 
-`0.5.0-rc.1` adds capability-scoped bearer tokens, opt-in bounded stale-cache
-fallback, safer deletion/error semantics and an operator KDF memory budget.
+The `0.5.0` prerelease line adds capability-scoped bearer tokens, opt-in bounded
+stale-cache fallback, safer deletion/error semantics and an operator KDF memory
+budget.
 Read the [changelog](CHANGELOG.md) and [upgrade notes](docs/release-notes.md).
 A source update does not update an installed image automatically.
 
@@ -65,7 +69,8 @@ See the [compatibility matrix](docs/compatibility.md).
 
 Read the [install guide](docs/install/eso-webhook.md) and
 [threat model](docs/threat-model.md) first. This example explicitly opts into
-`0.5.0-rc.1`; the Cloud qualification limitation above applies.
+`0.5.0-rc.2`; confirm its published artifacts and verification evidence on
+GitHub Releases before installing. The Cloud qualification limitation above applies.
 
 Prerequisites: Kubernetes, ESO, Helm with OCI support, a dedicated user API key,
 and that user's master password. Prepare `client-id`, `client-secret`,
@@ -86,7 +91,7 @@ kubectl -n bweso-system create configmap bweso-selector-policy \
 
 helm upgrade --install bweso \
   oci://ghcr.io/ponchia/charts/vaultwarden-eso-provider \
-  --namespace bweso-system --version 0.5.0-rc.1 \
+  --namespace bweso-system --version 0.5.0-rc.2 \
   --set-string config.singleOriginUrl='https://vaultwarden.example.com' \
   --set-string credentials.existingSecret.name='bweso-credentials' \
   --set-string selectorPolicy.configMap.name='bweso-selector-policy'
@@ -106,8 +111,9 @@ Use separate accounts and deployments where that distinction matters.
 
 Allow only reviewed `id:` selectors. Policy is **item-level**, not field-level:
 access to an item allows any supported property on that item. Scoped tokens in
-`0.5.0-rc.1` add caller-specific limits, but do not change the upstream account's
-privileges. Restrict access to the provider namespace and workload token Secrets.
+the `0.5.0` prerelease line add caller-specific limits, but do not change the
+upstream account's privileges. Restrict access to the provider namespace and
+workload token Secrets.
 
 The default Service is cluster-internal **HTTP**. It carries bearer tokens and
 plaintext resolved values. Use a trusted pod network with reviewed NetworkPolicy

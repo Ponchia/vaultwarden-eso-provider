@@ -1,12 +1,16 @@
 """Stable admission cannot be satisfied by old or unrelated backend smoke tests."""
 import copy
+from contextlib import redirect_stdout
+import io
 from datetime import datetime, timedelta, timezone
 import unittest
 import json
 from pathlib import Path
 import subprocess
 import sys
-from stable_readiness import CHECKS, validate
+import tempfile
+from unittest.mock import patch
+from stable_readiness import CHECKS, main, validate
 
 
 class StableReadinessTests(unittest.TestCase):
@@ -111,6 +115,49 @@ class StableReadinessTests(unittest.TestCase):
         report = self.scoped()
         del report["releaseScope"]
         with self.assertRaises(ValueError): validate(report, "0.5.0", "b" * 64)
+
+    def cli_status(self, report, tag, *options):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "docs").mkdir()
+            (root / "docs/release-readiness.json").write_text(json.dumps(report))
+            output = io.StringIO()
+            with patch("stable_readiness.ROOT", root), \
+                    patch("stable_readiness.runtime_fingerprint", return_value="b" * 64), \
+                    patch.object(sys, "argv", ["stable_readiness.py", "--tag", tag, *options]), \
+                    redirect_stdout(output):
+                main()
+            return json.loads(output.getvalue())
+
+    def test_prerelease_cli_emits_json_for_the_exact_deferred_scope(self):
+        report = self.scoped() | {"targetVersion":"0.5.0-rc.2"}
+        status = self.cli_status(report, "v0.5.0-rc.2")
+        self.assertEqual(status, {
+            "ready":True, "gate":"backend-release-scope", "tag":"v0.5.0-rc.2",
+            "releaseScope":"vaultwarden-only", "cloud":"deferred",
+            "runtimeInputsSha256":"b" * 64, "otherReleaseGatesRequired":True,
+            "prerelease":True,
+        })
+        self.assertEqual(report["cloud"], {"status":"deferred", "issue":75})
+
+    def test_prerelease_cli_does_not_bypass_version_or_cloud_scope_checks(self):
+        correct = self.scoped() | {"targetVersion":"0.5.0-rc.2"}
+        invalid_reports = (self.scoped(), correct | {"cloud":{"status":"passed", "issue":75}})
+        for report in invalid_reports:
+            with self.subTest(report=report):
+                with self.assertRaises(ValueError):
+                    self.cli_status(report, "v0.5.0-rc.2")
+                status = self.cli_status(report, "v0.5.0-rc.2", "--status")
+                self.assertFalse(status["ready"])
+                self.assertEqual(status["cloud"], "unverified")
+                self.assertEqual(status["tag"], "v0.5.0-rc.2")
+
+    def test_stable_cli_keeps_the_existing_scope_contract(self):
+        self.assertEqual(self.cli_status(self.scoped(), "v0.5.0"), {
+            "ready":True, "gate":"backend-release-scope", "tag":"v0.5.0",
+            "releaseScope":"vaultwarden-only", "cloud":"deferred",
+            "runtimeInputsSha256":"b" * 64, "otherReleaseGatesRequired":True,
+        })
 
     def test_checked_in_scope_and_cli_agree_without_fabricating_cloud_evidence(self):
         root = Path(__file__).resolve().parents[1]

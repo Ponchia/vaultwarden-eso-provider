@@ -1,6 +1,6 @@
 # Failure and recovery
 
-These procedures target the `0.5.0-rc.1` prerelease. Scoped authentication,
+These procedures target the `0.5.0-rc.2` prerelease. Scoped authentication,
 bounded stale cache and the corrected missing-property status are included;
 `v0.4.0` does not include them. Check the deployed image before applying a
 procedure. Never paste credentials, item IDs or resolved values into issues.
