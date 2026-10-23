@@ -1,6 +1,6 @@
 # ESO Webhook Install
 
-**Version boundary:** this guide targets the `v0.5.0-rc.1` prerelease, including
+**Version boundary:** this guide targets the `v0.5.0-rc.2` prerelease, including
 scoped authentication, opt-in bounded stale cache, corrected Argon2, the memory
 budget and HTTP 422 for missing properties. Cloud acceptance is deferred and
 non-blocking for Vaultwarden-only release qualification. Cloud remains unverified;
@@ -41,7 +41,7 @@ unreleased `main` builds, clone the repository and use
 Set the release chart reference:
 
 ```bash
-CHART_VERSION=0.5.0-rc.1
+CHART_VERSION=0.5.0-rc.2
 CHART_REF="oci://ghcr.io/ponchia/charts/vaultwarden-eso-provider"
 ```
 

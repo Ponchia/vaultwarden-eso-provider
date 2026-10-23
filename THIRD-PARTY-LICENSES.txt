@@ -8,7 +8,7 @@ This inventory is attribution, not an independent legal or security review.
 Apache License 2.0 (Apache-2.0)
 Used by:
 - cmov 0.5.4
-- ctutils 0.4.2
+- ctutils 0.4.5
 - secrecy 0.10.3
 - utf8_iter 1.0.4
 - zeroize 1.9.1
@@ -499,7 +499,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ================================================================================
 Apache License 2.0 (Apache-2.0)
 Used by:
-- ipnet 2.12.0
+- ipnet 2.12.2
 
                                  Apache License
                            Version 2.0, January 2004
@@ -710,6 +710,7 @@ Used by:
 - clap 4.6.7
 - clap_builder 4.6.7
 - clap_derive 4.6.7
+- clap_lex 1.1.1
 
                                  Apache License
                            Version 2.0, January 2004
@@ -922,7 +923,6 @@ Used by:
 - anstyle-parse 1.0.0
 - anstyle-query 1.1.5
 - anstyle 1.0.14
-- clap_lex 1.1.0
 - colorchoice 1.0.5
 - is_terminal_polyfill 1.70.2
 
@@ -1133,11 +1133,11 @@ Used by:
 ================================================================================
 Apache License 2.0 (Apache-2.0)
 Used by:
-- futures-channel 0.3.32
-- futures-core 0.3.32
-- futures-sink 0.3.32
-- futures-task 0.3.32
-- futures-util 0.3.32
+- futures-channel 0.3.34
+- futures-core 0.3.34
+- futures-sink 0.3.34
+- futures-task 0.3.34
+- futures-util 0.3.34
 
                               Apache License
                         Version 2.0, January 2004
@@ -1969,7 +1969,7 @@ limitations under the License.
 ================================================================================
 Apache License 2.0 (Apache-2.0)
 Used by:
-- tokio-rustls 0.26.4
+- tokio-rustls 0.26.6
 
                               Apache License
                         Version 2.0, January 2004
@@ -2177,7 +2177,7 @@ limitations under the License.
 ================================================================================
 Apache License 2.0 (Apache-2.0)
 Used by:
-- rustls-pki-types 1.14.1
+- rustls-pki-types 1.15.1
 
                               Apache License
                         Version 2.0, January 2004
@@ -2387,30 +2387,31 @@ Apache License 2.0 (Apache-2.0)
 Used by:
 - atomic-waker 1.1.2
 - base64 0.22.1
-- bitflags 2.13.0
-- cfg-if 1.0.4
-- displaydoc 0.2.6
+- base64 0.23.1
+- bitflags 2.13.2
+- cfg-if 1.0.5
+- displaydoc 0.2.7
 - errno 0.3.14
 - form_urlencoded 1.2.2
 - heck 0.5.0
 - httparse 1.10.1
-- hyper-rustls 0.27.9
+- hyper-rustls 0.27.10
 - idna 1.1.0
 - idna_adapter 1.2.2
-- lazy_static 1.5.0
-- log 0.4.32
+- lazy_static 1.5.1
+- log 0.4.34
 - mime 0.3.17
 - once_cell 1.21.4
 - percent-encoding 2.3.2
-- regex-automata 0.4.14
+- regex-automata 0.4.18
 - regex-syntax 0.8.11
 - ring 0.17.14
 - rustls 0.23.46
 - signal-hook-registry 1.4.8
-- smallvec 1.15.2
-- socket2 0.6.4
+- smallvec 1.16.3
+- socket2 0.6.5
 - stable_deref_trait 1.2.1
-- thread_local 1.1.9
+- thread_local 1.1.10
 - url 2.5.8
 
                               Apache License
@@ -2838,17 +2839,17 @@ Used by:
 - const-oid 0.10.2
 - cpubits 0.1.1
 - cpufeatures 0.2.17
-- cpufeatures 0.3.0
+- cpufeatures 0.3.1
 - crypto-common 0.1.7
 - crypto-common 0.2.2
 - digest 0.10.7
 - digest 0.11.3
 - hmac 0.13.0
-- hybrid-array 0.4.12
-- inout 0.2.2
+- hybrid-array 0.4.15
+- inout 0.2.5
 - password-hash 0.5.0
 - pbkdf2 0.13.0
-- sha2 0.11.0
+- sha2 0.11.1
 
                               Apache License
                         Version 2.0, January 2004
@@ -3669,23 +3670,23 @@ Used by:
 - anyhow 1.0.104
 - async-trait 0.1.92
 - itoa 1.0.18
-- libc 0.2.186
+- libc 0.2.191
 - pin-project-lite 0.2.17
-- proc-macro2 1.0.106
-- quote 1.0.45
+- proc-macro2 1.0.107
+- quote 1.0.47
 - ryu 1.0.23
 - serde 1.0.229
 - serde_core 1.0.229
 - serde_derive 1.0.229
-- serde_json 1.0.151
+- serde_json 1.0.154
 - serde_path_to_error 0.1.20
 - serde_urlencoded 0.7.1
-- syn 2.0.117
-- syn 3.0.6
+- syn 2.0.119
+- syn 3.0.9
 - sync_wrapper 1.0.2
 - thiserror-impl 2.0.21
 - thiserror 2.0.21
-- unicode-ident 1.0.24
+- unicode-ident 1.0.27
 - utf8parse 0.2.2
 
 Apache License
@@ -3838,7 +3839,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ================================================================================
 Community Data License Agreement Permissive 2.0 (CDLA-Permissive-2.0)
 Used by:
-- webpki-roots 1.0.7
+- webpki-roots 1.0.11
 
 # Community Data License Agreement - Permissive - Version 2.0
 
@@ -4430,7 +4431,7 @@ CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ================================================================================
 ISC License (ISC)
 Used by:
-- rustls-webpki 0.103.15
+- rustls-webpki 0.103.16
 
 Except as otherwise noted, this project is licensed under the following
 (ISC-style) terms:
@@ -4456,7 +4457,7 @@ third-party/chromium/LICENSE.
 ================================================================================
 MIT License (MIT)
 Used by:
-- mio 1.2.1
+- mio 1.2.4
 
 Copyright (c) 2014 Carl Lerche and other MIO contributors
 
@@ -4482,7 +4483,7 @@ THE SOFTWARE.
 ================================================================================
 MIT License (MIT)
 Used by:
-- hyper 1.10.1
+- hyper 1.12.0
 
 Copyright (c) 2014-2026 Sean McArthur
 
@@ -4508,7 +4509,7 @@ THE SOFTWARE.
 ================================================================================
 MIT License (MIT)
 Used by:
-- bytes 1.11.1
+- bytes 1.12.1
 
 Copyright (c) 2018 Carl Lerche
 
@@ -4540,7 +4541,7 @@ DEALINGS IN THE SOFTWARE.
 ================================================================================
 MIT License (MIT)
 Used by:
-- want 0.3.1
+- want 0.3.2
 
 Copyright (c) 2018-2019 Sean McArthur
 
@@ -4815,41 +4816,10 @@ DEALINGS IN THE SOFTWARE.
 ================================================================================
 MIT License (MIT)
 Used by:
-- http-body 1.0.1
+- http-body-util 0.1.5
+- http-body 1.1.0
 
-Copyright (c) 2019-2024 Sean McArthur & Hyper Contributors
-
-Permission is hereby granted, free of charge, to any
-person obtaining a copy of this software and associated
-documentation files (the "Software"), to deal in the
-Software without restriction, including without
-limitation the rights to use, copy, modify, merge,
-publish, distribute, sublicense, and/or sell copies of
-the Software, and to permit persons to whom the Software
-is furnished to do so, subject to the following
-conditions:
-
-The above copyright notice and this permission notice
-shall be included in all copies or substantial portions
-of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
-ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
-TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
-PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
-SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
-OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
-IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-DEALINGS IN THE SOFTWARE.
-
-
-================================================================================
-MIT License (MIT)
-Used by:
-- http-body-util 0.1.3
-
-Copyright (c) 2019-2025 Sean McArthur & Hyper Contributors
+Copyright (c) 2019-2026 Sean McArthur & Hyper Contributors
 
 Permission is hereby granted, free of charge, to any
 person obtaining a copy of this software and associated
@@ -4879,7 +4849,7 @@ DEALINGS IN THE SOFTWARE.
 ================================================================================
 MIT License (MIT)
 Used by:
-- hyper-util 0.1.20
+- hyper-util 0.1.21
 
 Copyright (c) 2023-2025 Sean McArthur
 
@@ -4905,7 +4875,7 @@ THE SOFTWARE.
 ================================================================================
 MIT License (MIT)
 Used by:
-- synstructure 0.13.2
+- synstructure 0.14.0
 
 Copyright 2016 Nika Layzell
 
@@ -4933,7 +4903,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 ================================================================================
 MIT License (MIT)
 Used by:
-- tokio-macros 2.7.0
+- tokio-macros 2.7.2
 
 MIT License
 
@@ -5023,8 +4993,8 @@ SOFTWARE.
 ================================================================================
 MIT License (MIT)
 Used by:
-- tokio-util 0.7.18
-- tokio 1.53.2
+- tokio-util 0.7.20
+- tokio 1.54.1
 
 MIT License
 
@@ -5052,7 +5022,7 @@ SOFTWARE.
 ================================================================================
 MIT License (MIT)
 Used by:
-- zmij 1.0.21
+- zmij 1.0.23
 
 Permission is hereby granted, free of charge, to any
 person obtaining a copy of this software and associated
@@ -5110,7 +5080,7 @@ SOFTWARE.
 ================================================================================
 MIT License (MIT)
 Used by:
-- memchr 2.8.2
+- memchr 2.8.3
 
 The MIT License (MIT)
 
@@ -5224,7 +5194,7 @@ SOFTWARE.
 ================================================================================
 Unicode License v3 (Unicode-3.0)
 Used by:
-- unicode-ident 1.0.24
+- unicode-ident 1.0.27
 
 UNICODE LICENSE V3
 
@@ -5270,24 +5240,24 @@ authorization of the copyright holder.
 ================================================================================
 Unicode License v3 (Unicode-3.0)
 Used by:
-- icu_collections 2.2.0
-- icu_locale_core 2.2.0
-- icu_normalizer 2.2.0
-- icu_normalizer_data 2.2.0
-- icu_properties 2.2.0
-- icu_properties_data 2.2.0
-- icu_provider 2.2.0
-- litemap 0.8.2
-- potential_utf 0.1.5
-- tinystr 0.8.3
-- writeable 0.6.3
-- yoke-derive 0.8.2
-- yoke 0.8.3
-- zerofrom-derive 0.1.7
+- icu_collections 2.4.0
+- icu_locale_core 2.4.0
+- icu_normalizer 2.4.0
+- icu_normalizer_data 2.4.0
+- icu_properties 2.4.0
+- icu_properties_data 2.4.0
+- icu_provider 2.4.0
+- litemap 0.8.3
+- potential_utf 0.1.6
+- tinystr 0.8.5
+- writeable 0.6.4
+- yoke-derive 0.8.4
+- yoke 0.8.4
+- zerofrom-derive 0.1.8
 - zerofrom 0.1.8
-- zerotrie 0.2.4
-- zerovec-derive 0.11.3
-- zerovec 0.11.6
+- zerotrie 0.2.5
+- zerovec-derive 0.11.7
+- zerovec 0.11.9
 
 UNICODE LICENSE V3
 

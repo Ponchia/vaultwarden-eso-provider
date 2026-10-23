@@ -63,9 +63,6 @@ def main() -> None:
     parser.add_argument("--status", action="store_true", help="Report backend-scope admission only; other release gates and publication approval remain separate")
     args = parser.parse_args()
     require(args.tag.startswith("v") and VERSION.fullmatch(args.tag[1:]) is not None, "invalid release tag")
-    if "-" in args.tag:
-        print("Prerelease: no claim of completed stable backend qualification.")
-        return
     fingerprint = runtime_fingerprint(ROOT)
     report = json.loads((ROOT / "docs/release-readiness.json").read_text())
     try:
@@ -76,9 +73,13 @@ def main() -> None:
         print(json.dumps({"ready": False, "gate": "backend-release-scope", "tag": args.tag,
                           "cloud": "unverified", "runtimeInputsSha256": fingerprint}))
         return
-    print(json.dumps({"ready": True, "gate": "backend-release-scope", "tag": args.tag,
-                      "releaseScope": scope, "cloud": report["cloud"]["status"],
-                      "runtimeInputsSha256": fingerprint, "otherReleaseGatesRequired": True}))
+    status = {"ready": True, "gate": "backend-release-scope", "tag": args.tag,
+              "releaseScope": scope, "cloud": report["cloud"]["status"],
+              "runtimeInputsSha256": fingerprint, "otherReleaseGatesRequired": True}
+    if "-" in args.tag:
+        # Scope admission does not claim completed stable backend qualification.
+        status["prerelease"] = True
+    print(json.dumps(status))
 
 
 if __name__ == "__main__":
