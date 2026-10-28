@@ -103,6 +103,32 @@ existing repository allowlist **before running the PR checks**. Also review
 transitive actions: the pinned Trivy action invokes
 `aquasecurity/setup-trivy@3fb12ec12f41e471780db15c232d5dd185dcb514`.
 
+### Actions-group qualification (28 October 2026)
+
+The grouped Dependabot update originally opened as PR #89 changed seven
+workflow files. The original CI, dependency-audit and interoperability
+workflows failed at GitHub startup **before creating jobs**.
+GitHub's annotations identified newly proposed immutable action SHAs
+missing from the selected-actions policy.
+
+After reviewing the upstream commits, the existing restricted policy was
+extended by **only three exact refs**, preserving the previous 34 entries:
+
+- Swatinem/rust-cache@c8037a86dde8214a8310e9f54a8fc61ab362aa31
+- taiki-e/install-action@1e29709c0ec63babbe8f266397a465f29a825f91
+- docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6
+
+The CodeQL sub-actions are GitHub-owned and remain pinned to a single
+matching revision. No wildcard allowance, verified-creator broadening,
+workflow-token permission change, or protected-branch exception was made.
+
+The original startup failures contain **no test evidence**. The action
+changes are reproduced with the Dependabot commit attribution preserved in
+a maintainer-owned qualification PR so GitHub can run the complete required
+check matrix against a fresh exact head. Preserve the original PR as
+historical context and close it as superseded only once the replacement
+has passed required gates and merged.
+
 Read the live allowlist with:
 
 ```bash
