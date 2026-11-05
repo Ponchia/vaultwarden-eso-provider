@@ -1,6 +1,6 @@
 # Candidate qualification
 
-`0.5.0-rc.2` is a **prerelease candidate** for the Vaultwarden release line.
+`0.5.0-rc.3` is a **prerelease candidate** for the Vaultwarden release line.
 GitHub Releases records publication and exact artifact evidence. Candidate
 checks alone neither publish artifacts nor establish that released bytes passed.
 The `0.5.0` release line is scoped to Vaultwarden only. Bitwarden Cloud
@@ -41,8 +41,8 @@ must not be presented as Bitwarden Cloud verification.
 Select the release tag as both the workflow ref and the validated input:
 
 ```bash
-gh workflow run qualification.yml --ref v0.5.0-rc.2 \
-  -f release_tag=v0.5.0-rc.2
+gh workflow run qualification.yml --ref v0.5.0-rc.3 \
+  -f release_tag=v0.5.0-rc.3
 ```
 
 This mode downloads the signed release archive, checks its checksum against

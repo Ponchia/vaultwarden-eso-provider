@@ -22,12 +22,12 @@ with Bitwarden, Vaultwarden, or External Secrets Operator.
 
 ## Release status
 
-The source tree prepares `0.5.0-rc.2`, a security maintenance prerelease with
+The source tree prepares `0.5.0-rc.3`, a security maintenance prerelease with
 **Vaultwarden-only release qualification**. Bitwarden Cloud acceptance remains
 deferred in #75; see [release readiness](docs/stable-readiness.md).
 The stable `0.5.0` version is not published.
 
-**The `v0.5.0-rc.2` candidate includes the October TLS and constant-time
+**The `v0.5.0-rc.3` candidate includes the October TLS and constant-time
 dependency fixes, alongside the earlier Argon2 and deletion-safety fixes.**
 Check [GitHub Releases](https://github.com/Ponchia/vaultwarden-eso-provider/releases)
 for published artifacts and verification evidence. `v0.4.0` is the previous
@@ -69,7 +69,7 @@ See the [compatibility matrix](docs/compatibility.md).
 
 Read the [install guide](docs/install/eso-webhook.md) and
 [threat model](docs/threat-model.md) first. This example explicitly opts into
-`0.5.0-rc.2`; confirm its published artifacts and verification evidence on
+`0.5.0-rc.3`; confirm its published artifacts and verification evidence on
 GitHub Releases before installing. The Cloud qualification limitation above applies.
 
 Prerequisites: Kubernetes, ESO, Helm with OCI support, a dedicated user API key,
@@ -91,7 +91,7 @@ kubectl -n bweso-system create configmap bweso-selector-policy \
 
 helm upgrade --install bweso \
   oci://ghcr.io/ponchia/charts/vaultwarden-eso-provider \
-  --namespace bweso-system --version 0.5.0-rc.2 \
+  --namespace bweso-system --version 0.5.0-rc.3 \
   --set-string config.singleOriginUrl='https://vaultwarden.example.com' \
   --set-string credentials.existingSecret.name='bweso-credentials' \
   --set-string selectorPolicy.configMap.name='bweso-selector-policy'

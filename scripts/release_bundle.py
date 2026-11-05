@@ -117,7 +117,8 @@ def readiness_scope(report: dict, version: str) -> str:
 def inventory(directory: Path, version: str) -> list[dict[str, Any]]:
     result = []
     readiness = json.loads(read_regular(directory / "release-readiness.json"))
-    scope = readiness_scope(readiness, version.split("-", 1)[0])
+    # Compare the full version, prerelease included, as stable_readiness.py does.
+    scope = readiness_scope(readiness, version)
     require("-" in version or scope == "vaultwarden-only" or readiness["cloud"].get("status") == "passed",
             "Cloud-qualified stable distribution has no passed Cloud acceptance record")
     member_hashes = {arch: check_archive(directory / binary_name(version, arch), arch) for arch in ARCHES}
