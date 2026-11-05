@@ -1,6 +1,8 @@
-# 0.5.0-rc.2 upgrade notes
+# 0.5.0-rc.3 upgrade notes
 
-These notes describe the `0.5.0-rc.2` security maintenance prerelease candidate.
+These notes describe the `0.5.0-rc.3` security maintenance prerelease candidate.
+It carries the same changes the `v0.5.0-rc.2` tag was cut for. That tag's
+release stopped before publication, so its image and chart are not a release.
 The GitHub Releases page is the source of truth for available versions.
 **Release qualification scope: Vaultwarden only.** Bitwarden Cloud acceptance
 is deferred in #75 and is not a blocker for this release. Cloud support remains
@@ -14,7 +16,7 @@ trusted roots and constant-time utility dependencies for RUSTSEC-2026-0381,
 RUSTSEC-2026-0382 and RUSTSEC-2026-0385. Dependency notices and exact-head
 qualification follow the patched lockfile.
 
-The `0.5.0-rc.2` distribution adds native AMD64/ARM64 archives, exact executable
+The `0.5.0-rc.3` distribution adds native AMD64/ARM64 archives, exact executable
 and Cargo dependency SPDX inventories, dependency notices and a signed complete
 release checksum inventory. Native archives contain the same executable as the
 container image. The lockfile fixes five optional QUIC advisories; the provider

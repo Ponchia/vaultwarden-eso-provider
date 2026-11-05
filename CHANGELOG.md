@@ -12,11 +12,16 @@ before release so generated notes land in the right category.
 
 Stable publication remains a separate release decision.
 
-## v0.5.0-rc.2 — Candidate
+## v0.5.0-rc.3 — Candidate
 
 Security maintenance prerelease for the Vaultwarden-qualified release line.
 The GitHub Release records publication and the exact artifact evidence.
 
+- Supersede the `v0.5.0-rc.2` tag. Its release workflow pushed the container
+  image and OCI chart but stopped before the GitHub Release: the release
+  inventory compared the prerelease readiness record with the base version
+  `0.5.0`. It now compares the full version, as the readiness gate does. The
+  `0.5.0-rc.2` artifacts are not a release; use `0.5.0-rc.3`.
 - Update the TLS certificate verifier, trusted roots and constant-time utility
   dependencies for RUSTSEC-2026-0381, RUSTSEC-2026-0382 and RUSTSEC-2026-0385.
   Refresh compatible runtime/hash dependencies and their generated notices.

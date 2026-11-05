@@ -132,6 +132,21 @@ class ReleaseBundleTests(unittest.TestCase):
         path.write_text(json.dumps({"schemaVersion":1, "targetVersion":self.version, "cloud":{"status":"pending"}}))
         with self.assertRaises(ValueError): verify(self.root)
 
+    def test_prerelease_distribution_matches_full_readiness_version(self):
+        # The readiness record names the exact prerelease, as stable_readiness.py
+        # requires; the inventory must compare the same full version.
+        self.version = "0.5.0-rc.3"
+        self.populate()
+        verify(self.root)
+
+    def test_prerelease_distribution_rejects_base_version_readiness(self):
+        self.version = "0.5.0-rc.3"
+        self.populate()
+        path = self.root / "release-readiness.json"
+        record = json.loads(path.read_text())
+        path.write_text(json.dumps(record | {"targetVersion":"0.5.0"}))
+        with self.assertRaises(ValueError): verify(self.root)
+
     def test_invalid_manifest_digest(self):
         with self.assertRaises(ValueError):
             write_bundle(self.root, "0.5.0", "a" * 40, "latest", "sha256:" + "c" * 64)
