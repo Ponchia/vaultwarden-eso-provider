@@ -13,6 +13,12 @@ on:
 permissions:
   contents: read
 
+# Collapse superseded PR scans without cancelling any push/scheduled scan.
+# Non-PR runs have their own unique concurrency identity.
+concurrency:
+  group: vault-codeql-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   rust:
     name: CodeQL Rust
