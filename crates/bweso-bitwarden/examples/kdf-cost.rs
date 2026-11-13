@@ -1,13 +1,27 @@
 //! Local, synthetic cost probe for the current Bitwarden master-key derivation.
 //! It cannot establish full-provider latency or security assurance.
 
-use std::{env, error::Error, fs, hint::black_box, str::FromStr, time::Instant};
+use std::{
+    env,
+    error::Error,
+    fs,
+    hint::black_box,
+    str::FromStr,
+    time::{Instant, SystemTime, UNIX_EPOCH},
+};
 
 use bweso_bitwarden::{derive_master_key, KdfConfig};
 use serde_json::{json, Value};
 
-const PASSWORD: &str = "synthetic-kdf-benchmark-password-not-a-real-secret";
-const SALT: &str = "synthetic-benchmark@example.invalid";
+// No fixed password or salt is embedded in the binary, even for synthetic
+// fixtures. These values are not credentials and never appear in output.
+fn synthetic_inputs() -> Result<(String, String), Box<dyn Error>> {
+    let nonce = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
+    let pid = std::process::id();
+    let password = format!("probe-{nonce:032x}-{pid:08x}");
+    let salt = format!("probe-{nonce:032x}@example.invalid");
+    Ok((password, salt))
+}
 const MAX_ROUNDS: usize = 20;
 const MAX_ARGON2_MEMORY_MIB: u32 = 64;
 
@@ -124,12 +138,18 @@ fn peak_rss_kib() -> Option<u64> {
         })
 }
 
-fn kdf_sample(name: &str, config: &KdfConfig, rounds: usize) -> Result<Value, Box<dyn Error>> {
+fn kdf_sample(
+    name: &str,
+    config: &KdfConfig,
+    rounds: usize,
+    password: &str,
+    salt: &str,
+) -> Result<Value, Box<dyn Error>> {
     let mut milliseconds = Vec::with_capacity(rounds);
     let rss_before = peak_rss_kib();
     for _ in 0..rounds {
         let started = Instant::now();
-        let key = derive_master_key(PASSWORD, SALT, config)?;
+        let key = derive_master_key(password, salt, config)?;
         black_box(key.as_bytes());
         milliseconds.push(started.elapsed().as_secs_f64() * 1000.0);
     }
@@ -155,6 +175,7 @@ fn kdf_sample(name: &str, config: &KdfConfig, rounds: usize) -> Result<Value, Bo
 
 fn run(args: impl IntoIterator<Item = String>) -> Result<Value, Box<dyn Error>> {
     let options = Options::parse(args)?;
+    let (password, salt) = synthetic_inputs()?;
     let mut measurements = Vec::new();
     if matches!(options.mode, Mode::Pbkdf2 | Mode::Both) {
         measurements.push(kdf_sample(
@@ -163,6 +184,8 @@ fn run(args: impl IntoIterator<Item = String>) -> Result<Value, Box<dyn Error>> 
                 iterations: options.pbkdf2_iterations,
             },
             options.rounds,
+            &password,
+            &salt,
         )?);
     }
     if matches!(options.mode, Mode::Argon2id | Mode::Both) {
@@ -174,6 +197,8 @@ fn run(args: impl IntoIterator<Item = String>) -> Result<Value, Box<dyn Error>> 
                 parallelism: options.argon2_parallelism,
             },
             options.rounds,
+            &password,
+            &salt,
         )?);
     }
     Ok(json!({

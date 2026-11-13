@@ -20,8 +20,12 @@ cargo build --release --locked -p bweso-bitwarden --example kdf-cost
   > kdf-evidence.json
 ~~~
 
-The tool uses one constant, non-secret password and a synthetic account email
-through the **same in-repository key-derivation implementation** as the provider.
+The tool generates a non-secret throwaway password and a synthetic account
+email in the reserved example.invalid domain from process/time values for
+each invocation, then uses them across both algorithms and all rounds.
+These are benchmarking inputs, not securely generated credentials; they are
+neither printed nor reused for authentication. It exercises the **same
+in-repository key-derivation implementation** as the provider.
 It caps a single probe to 20 iterations and Argon2 memory to 64 MiB; the
 application still supports larger server KDF costs through its separately
 controlled runtime budget. Do not edit the probe to use actual account details.
