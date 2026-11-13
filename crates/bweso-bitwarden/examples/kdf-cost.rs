@@ -143,7 +143,7 @@ fn kdf_sample(name: &str, config: &KdfConfig, rounds: usize) -> Result<Value, Bo
         "unit": "milliseconds",
         "sampleMs": milliseconds,
         "medianMs": if n % 2 == 0 {
-            (milliseconds[n / 2 - 1] + milliseconds[n / 2]) / 2.0
+            f64::midpoint(milliseconds[n / 2 - 1], milliseconds[n / 2])
         } else {
             milliseconds[n / 2]
         },
@@ -189,7 +189,7 @@ fn run(args: impl IntoIterator<Item = String>) -> Result<Value, Box<dyn Error>> 
         "runtime": {
             "os": env::consts::OS,
             "architecture": env::consts::ARCH,
-            "parallelism": std::thread::available_parallelism().ok().map(|n| n.get()),
+            "parallelism": std::thread::available_parallelism().ok().map(std::num::NonZeroUsize::get),
             "linuxCgroupCpuMax": fs::read_to_string("/sys/fs/cgroup/cpu.max")
                 .ok().map(|text| text.trim().to_string()),
             "linuxCgroupMemoryMax": fs::read_to_string("/sys/fs/cgroup/memory.max")
