@@ -2827,7 +2827,7 @@ limitations under the License.
 ================================================================================
 Apache License 2.0 (Apache-2.0)
 Used by:
-- aes 0.9.3
+- aes 0.9.4
 - argon2 0.5.3
 - base64ct 1.8.3
 - blake2 0.10.6
