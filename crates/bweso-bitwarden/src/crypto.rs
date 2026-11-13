@@ -395,6 +395,139 @@ mod tests {
     }
 
     #[test]
+    fn rejects_malformed_encrypted_string_parts_without_echoing_inputs() {
+        let iv = STANDARD.encode([0_u8; AES_CBC_IV_LENGTH]);
+        let ciphertext = STANDARD.encode([0_u8; AES_CBC_IV_LENGTH]);
+        let mac = STANDARD.encode([0_u8; HMAC_SHA256_LENGTH]);
+
+        for (part, raw) in [
+            ("iv", format!("2.!|{ciphertext}|{mac}")),
+            ("data", format!("2.{iv}|!|{mac}")),
+            ("mac", format!("2.{iv}|{ciphertext}|!")),
+        ] {
+            let error = raw.parse::<EncryptedString>().err();
+            assert!(matches!(
+                error,
+                Some(CryptoError::InvalidBase64 { part: actual, .. }) if actual == part
+            ));
+            let output = raw
+                .parse::<EncryptedString>()
+                .err()
+                .map(|error| error.to_string());
+            assert!(
+                output
+                    .as_deref()
+                    .is_some_and(|message| !message.contains(&raw)),
+                "errors must not echo encrypted input"
+            );
+        }
+
+        for raw in [
+            format!("2.{iv}|{ciphertext}"),
+            format!("2.{iv}|{ciphertext}|{mac}|extra"),
+        ] {
+            assert!(matches!(
+                raw.parse::<EncryptedString>(),
+                Err(CryptoError::InvalidPartCount)
+            ));
+        }
+
+        let short_mac = STANDARD.encode([0_u8; HMAC_SHA256_LENGTH - 1]);
+        let error = format!("2.{iv}|{ciphertext}|{short_mac}")
+            .parse::<EncryptedString>()
+            .err();
+        assert!(matches!(
+            error,
+            Some(CryptoError::InvalidMacLength { actual: 31 })
+        ));
+
+        for (header, expected_legacy) in [("0", true), ("1", false), ("3", false)] {
+            let raw = format!("{header}.{iv}|{ciphertext}|{mac}");
+            let error = raw.parse::<EncryptedString>().err();
+            if expected_legacy {
+                assert!(matches!(error, Some(CryptoError::LegacyNoMacDisabled)));
+            } else {
+                assert!(matches!(
+                    error,
+                    Some(CryptoError::UnsupportedEncryptionType { .. })
+                ));
+            }
+        }
+        assert!(matches!(
+            "not-a-type.payload".parse::<EncryptedString>(),
+            Err(CryptoError::InvalidEncryptionTypeHeader)
+        ));
+    }
+
+    #[test]
+    fn authenticates_iv_ciphertext_and_key_before_decryption(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let key = AuthenticatedSymmetricKey::from_base64(KEY_B64)?;
+
+        let mut altered_iv = DATABASE_URL.parse::<EncryptedString>()?;
+        altered_iv.iv[0] ^= 0x80;
+        assert!(matches!(
+            altered_iv.decrypt_bytes(&key),
+            Err(CryptoError::MacVerificationFailed)
+        ));
+
+        let mut altered_ciphertext = DATABASE_URL.parse::<EncryptedString>()?;
+        altered_ciphertext.data[0] ^= 0x80;
+        assert!(matches!(
+            altered_ciphertext.decrypt_bytes(&key),
+            Err(CryptoError::MacVerificationFailed)
+        ));
+
+        let wrong_key =
+            AuthenticatedSymmetricKey::try_from([0x55_u8; AUTHENTICATED_KEY_LENGTH].as_slice())?;
+        let original = DATABASE_URL.parse::<EncryptedString>()?;
+        assert!(matches!(
+            original.decrypt_bytes(&wrong_key),
+            Err(CryptoError::MacVerificationFailed)
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn authenticated_ciphertext_with_invalid_padding_is_rejected(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let key = AuthenticatedSymmetricKey::from_base64(KEY_B64)?;
+        let mut encrypted = DATABASE_URL.parse::<EncryptedString>()?;
+        // A valid MAC must not make invalid PKCS#7 padding acceptable.
+        encrypted.data.fill(0);
+        let mut signer = HmacSha256::new_from_slice(key.authentication_key())?;
+        signer.update(&encrypted.iv);
+        signer.update(&encrypted.data);
+        encrypted.mac = signer.finalize().into_bytes().to_vec();
+
+        assert!(matches!(
+            encrypted.decrypt_bytes(&key),
+            Err(CryptoError::DecryptFailed)
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn authenticated_invalid_utf8_is_rejected_without_plaintext_in_error(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let key = AuthenticatedSymmetricKey::from_base64(KEY_B64)?;
+        let mut encrypted = DATABASE_URL.parse::<EncryptedString>()?;
+        // Changing the CBC IV changes the first plaintext byte, but leaves the
+        // final block's valid padding intact. Re-sign so the MAC still verifies.
+        encrypted.iv[0] ^= 0xff;
+        let mut signer = HmacSha256::new_from_slice(key.authentication_key())?;
+        signer.update(&encrypted.iv);
+        signer.update(&encrypted.data);
+        encrypted.mac = signer.finalize().into_bytes().to_vec();
+
+        assert!(String::from_utf8(encrypted.decrypt_bytes(&key)?).is_err());
+        let error = encrypted.decrypt_utf8(&key).err();
+        assert!(matches!(error, Some(CryptoError::InvalidUtf8)));
+        assert!(!format!("{error:?}").contains("postgres"));
+        Ok(())
+    }
+
+    #[test]
     fn validates_key_length() {
         let Err(error) = AuthenticatedSymmetricKey::try_from([0_u8; 32].as_slice()) else {
             unreachable!("32-byte no-MAC key should fail");
