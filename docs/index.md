@@ -16,6 +16,7 @@ code.
 | Select vault items and fields safely | [Selectors and policy](selectors-and-policy.md) |
 | Review security boundaries | [Threat model](threat-model.md) |
 | Verify release artifacts | [Release verification](release-verification.md) |
+| Reproduce bounded synthetic KDF measurements | [Performance evidence](performance-evidence.md) |
 
 ## Operators
 
