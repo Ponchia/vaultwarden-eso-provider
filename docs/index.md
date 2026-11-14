@@ -11,6 +11,7 @@ code.
 | Goal | Document |
 | --- | --- |
 | Understand what the project is | [README](../README.md) |
+| Distinguish published artifacts from unreleased source | [Release status and exact evidence](stable-readiness.md#published-artifacts-and-current-source) |
 | Install the provider with ESO | [ESO webhook install](install/eso-webhook.md) |
 | Choose Vaultwarden or Bitwarden endpoints | [Compatibility](compatibility.md) |
 | Select vault items and fields safely | [Selectors and policy](selectors-and-policy.md) |

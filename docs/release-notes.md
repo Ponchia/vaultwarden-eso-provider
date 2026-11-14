@@ -8,7 +8,7 @@ The GitHub Releases page is the source of truth for available versions.
 is deferred in #75 and is not a blocker for this release. Cloud support remains
 unverified, not passed; split-endpoint implementation is not certification.
 The exact-head Vaultwarden, security, native-package and signed-artifact gates
-still apply; see [stable readiness](stable-readiness.md).
+still apply; see [stable readiness](https://github.com/Ponchia/vaultwarden-eso-provider/blob/main/docs/stable-readiness.md).
 
 The locked TLS dependency is patched to rustls 0.23.46 for four published
 advisories. The October maintenance also updates the certificate verifier,

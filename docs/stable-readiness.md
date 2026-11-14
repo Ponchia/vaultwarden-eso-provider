@@ -1,13 +1,35 @@
 # Stable 0.5.0 readiness
 
-`v0.5.0` is **not published**. The source prepares `v0.5.0-rc.3`, a security
-maintenance prerelease with refreshed TLS and constant-time dependencies.
-GitHub Releases records publication and exact artifact evidence. The recorded
-`v0.5.0-rc.1` acceptance remains historical evidence and does not qualify the
-new dependency graph.
+`v0.5.0` is **not published**. The latest published prerelease is
+[`v0.5.0-rc.3`](https://github.com/Ponchia/vaultwarden-eso-provider/releases/tag/v0.5.0-rc.3),
+released on **5 November 2026** with refreshed TLS and constant-time dependencies.
+The recorded `v0.5.0-rc.1` acceptance remains historical evidence and does not
+qualify the newer dependency graph.
+
+## Published artifacts and current source
+
+The published `v0.5.0-rc.3` was built from
+[`11245a8371915cb11da2b690791753c65dddd5d0`](https://github.com/Ponchia/vaultwarden-eso-provider/commit/11245a8371915cb11da2b690791753c65dddd5d0).
+Its [post-publication qualification](https://github.com/Ponchia/vaultwarden-eso-provider/actions/runs/42044400691)
+passed on native AMD64 and ARM64 against the downloaded signed artifacts, rather
+than a rebuild of `main`. This is dated release evidence, not a fresh dependency
+scan or an independent security audit.
+
+Use the release's checksum-covered manifest and verification instructions to pin
+its image and chart. The source has since received a dependency update and
+additional tests ([changes after this release](https://github.com/Ponchia/vaultwarden-eso-provider/compare/v0.5.0-rc.3...main)).
+Those changes are **unreleased** even while the source version still reads
+`0.5.0-rc.3`. A green `main` build does not update an installed image or qualify
+new source as the already-published artifact. Never move the existing tag or
+replace its downloads to incorporate later changes.
+
+For a new candidate, select a new version, qualify its exact source and packaged
+artifacts, and obtain the maintainer's release decision. Stable promotion needs
+its own matching metadata and acceptance evidence; the prerelease's successful
+checks do not automatically authorize or qualify `v0.5.0`.
 
 On 16 October 2026 the maintainer deferred Bitwarden Cloud acceptance. The
-prepared `0.5.0` release now has **Vaultwarden-only qualification**: issue #75
+`0.5.0` release line has **Vaultwarden-only qualification**: issue #75
 is follow-up work, not a release blocker. Cloud support remains unverified;
 no Cloud test was run or recorded as passed by changing this policy. External
 review and measured load/soak work remain separate in #76; no audit is claimed.
@@ -26,8 +48,8 @@ Rust, security, interoperability and **both native Vaultwarden/ESO packaged
 checks** remain mandatory through `release_gates.py`. Public artifact signatures,
 checksums, provenance and post-publication verification remain unchanged.
 The scope decision itself changes no endpoints, credentials or deployment.
-A separately discovered rustls patch is included below and requires fresh
-exact-head qualification. Publication still needs maintainer authorization.
+The published maintenance fixes are described below. Any later runtime change
+requires fresh exact-head qualification and an explicitly authorized new release.
 
 ## What the distribution includes
 
@@ -111,7 +133,8 @@ Cloud evidence older than 30 days require requalification. Recording evidence
 is not a security audit. See [live testing](live-testing.md) and
 [release qualification](release-qualification.md) before resuming the work.
 
-Inspect the prepared prerelease metadata without publishing:
+Inspect the checked-out source metadata without publishing. These commands
+validate metadata; they do not verify the published bytes or imply a new release:
 
 ```bash
 bash scripts/verify-release-version.sh v0.5.0-rc.3
@@ -124,13 +147,17 @@ Vaultwarden-only scope with Cloud deferred. Promoting to stable requires matchin
 stable version metadata and fresh exact-commit evidence; a prerelease record
 does not qualify `v0.5.0`.
 
-## Complete the Vaultwarden-scoped release
+## Qualify a new Vaultwarden-scoped release
 
-Pass the exact-head source, interoperability and both native packaged checks
-for the prepared `0.5.0-rc.3` candidate before creating that tag. Stable
-`v0.5.0` publication remains a separate release decision. Cloud acceptance
-stays deferred for the Vaultwarden-only scope.
-Verify every published download and run `qualification.yml` with the tag as
-both `ref` and `release_tag`. The same signed digests then go through the
-existing canary and GitOps upgrade, preserving credentials and selectors.
-Do not describe that Vaultwarden qualification as Bitwarden Cloud acceptance.
+Keep the published `v0.5.0-rc.3` tag and artifacts unchanged. For a new release,
+update version metadata deliberately and pass the exact-head source,
+interoperability and both native packaged checks before creating its new tag.
+Stable `v0.5.0` publication remains a separate maintainer decision. Cloud
+acceptance stays deferred for the Vaultwarden-only scope.
+
+After publication, verify every download and run `qualification.yml` with the
+published tag as both `ref` and `release_tag`. Repeating that read-only
+qualification verifies the selected existing artifacts; it does not republish
+or deploy them. Only a separately reviewed deployment upgrades a real cluster,
+preserving credentials and selectors. Do not describe Vaultwarden qualification
+as Bitwarden Cloud acceptance or independent human review.
