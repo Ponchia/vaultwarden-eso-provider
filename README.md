@@ -22,17 +22,22 @@ with Bitwarden, Vaultwarden, or External Secrets Operator.
 
 ## Release status
 
-The source tree prepares `0.5.0-rc.3`, a security maintenance prerelease with
-**Vaultwarden-only release qualification**. Bitwarden Cloud acceptance remains
-deferred in #75; see [release readiness](docs/stable-readiness.md).
-The stable `0.5.0` version is not published.
+**Published prerelease: [v0.5.0-rc.3](https://github.com/Ponchia/vaultwarden-eso-provider/releases/tag/v0.5.0-rc.3)**
+(5 November 2026), with **Vaultwarden-only release qualification**.
+The stable `0.5.0` version is not published. Bitwarden Cloud remains unverified
+and deferred in [#75](https://github.com/Ponchia/vaultwarden-eso-provider/issues/75).
 
-**The `v0.5.0-rc.3` candidate includes the October TLS and constant-time
-dependency fixes, alongside the earlier Argon2 and deletion-safety fixes.**
-Check [GitHub Releases](https://github.com/Ponchia/vaultwarden-eso-provider/releases)
-for published artifacts and verification evidence. `v0.4.0` is the previous
-stable release and has a known Argon2 salt-preprocessing defect; do not weaken
-an account's KDF to work around it.
+The published `v0.5.0-rc.3` includes the October TLS and constant-time dependency
+fixes, alongside the earlier Argon2 and deletion-safety fixes. Its source commit
+is `11245a8371915cb11da2b690791753c65dddd5d0`; later changes on `main` are not
+included in those immutable artifacts. See [published artifacts versus current
+source](docs/stable-readiness.md#published-artifacts-and-current-source) for the
+exact release evidence and remaining stable-release gates.
+
+**The previous stable `v0.4.0` has a known Argon2 salt-preprocessing defect.**
+Do not weaken an account's KDF to work around it or use it to roll back an
+Argon2 account. Review the prerelease's upgrade and rollback instructions
+before changing a working deployment.
 
 Each candidate must pass disposable Vaultwarden checks on native AMD64 and
 ARM64 and verification of its signed published artifacts. **Bitwarden Cloud is
