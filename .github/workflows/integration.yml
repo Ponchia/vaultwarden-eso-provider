@@ -46,7 +46,7 @@ jobs:
           toolchain: 1.98.1
 
       - name: Cache cargo
-        uses: Swatinem/rust-cache@c8037a86dde8214a8310e9f54a8fc61ab362aa31 # v2
+        uses: Swatinem/rust-cache@eedcf2fb1c22f010a0eb66b92f378c110977f266 # v2
         with:
           prefix-key: interop
           cache-on-failure: true
@@ -64,7 +64,7 @@ jobs:
           "${RUNNER_TEMP}/interop-venv/bin/python" -m py_compile scripts/vaultwarden-smoke.py
 
       - name: Install Helm
-        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5
+        uses: azure/setup-helm@2f5e7bc67f1f9972ab16657bb795f36d8f04de0e # v5
         with:
           version: v4.1.4
 
